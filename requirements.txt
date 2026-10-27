@@ -1,0 +1,32 @@
+# Instalados pelo Instalar.bat, em blocos: se um falhar (o pyaudio e o
+# costumeiro em maquina nova), os outros entram e a NEBELL abre mesmo
+# assim, so sem aquele recurso.
+#
+# Para instalar na mao:  .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# voz e conversa  -- sem estes ela nao funciona
+piper-tts
+requests
+
+# escuta por voz
+faster-whisper
+SpeechRecognition
+
+# audio do microfone (permite cortar a fala no meio)
+pyaudio
+
+# janela e medidores
+pywebview
+psutil
+
+# internet e imagens
+ddgs
+pillow
+pytesseract
+
+# documentos
+pypdf
+python-docx
+openpyxl
+python-pptx
+reportlab

@@ -1,0 +1,34 @@
+# Ambiente: guarda o caminho do Python que o criou e nao roda em
+# outra maquina. O Instalar.bat cria um novo.
+.venv/
+.venv_antigo/
+__pycache__/
+*.pyc
+*.pyo
+
+# A MEMORIA dela sao as suas conversas. Fica so na sua maquina.
+memoria.db
+memoria.db-wal
+memoria.db-shm
+memoria.antes_de_restaurar.db
+backup/
+
+# Desta maquina, nao do projeto
+microfone.json
+
+# Pesados, baixados pelo instalador
+voices/
+whisper_models/
+
+# Trabalho
+audio_temp/
+workspace/
+_download/
+_lixo/
+*.zip
+*.bak
+*.wav
+nebell_dev.log
+
+# A pagina da HUD e gerada pelo nebell_hud.py na abertura
+hud/
