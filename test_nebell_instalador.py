@@ -273,6 +273,19 @@ class TestVoz(InstaladorTest):
 # ============================================================
 
 class TestTesseract(NoWindows):
+    def setUp(self):
+        super().setUp()
+
+        # O instalador procura o Tesseract em %PROGRAMFILES%. Numa
+        # maquina que JA o tem (a do dono), isso fazia estes testes
+        # falharem. Aponta para uma pasta vazia, igual em qualquer PC.
+        self._vazia = TemporaryDirectory()
+        self.addCleanup(self._vazia.cleanup)
+        env = mock.patch.dict(
+            "os.environ", {"PROGRAMFILES": self._vazia.name})
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_pular_nao_vira_falta(self):
         I.instalar_tesseract(pular=True)
         self.assertEqual(I.recado, [])
