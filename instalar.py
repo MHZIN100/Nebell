@@ -51,6 +51,7 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
+    ("escuta na placa de vídeo", ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]),
     ("áudio do microfone", ["pyaudio"]),
     ("janela e medidores", ["pywebview", "psutil"]),
     ("internet e imagens", ["ddgs", "pillow", "pytesseract"]),
@@ -217,6 +218,29 @@ def baixar(url, destino, rotulo):
 # PASSOS
 # ============================================================
 
+PYTHON_MINIMO = (3, 10)
+PYTHON_MAXIMO = (3, 12)
+
+
+def versao_serve(versao):
+    """O pyaudio so tem versao pronta (sem compilador) ate o 3.12."""
+    return PYTHON_MINIMO <= tuple(versao[:2]) <= PYTHON_MAXIMO
+
+
+def versao_do_venv(vpy):
+    ok, saida = roda(
+        [str(vpy), "-c",
+         "import sys; print(sys.version_info[0], sys.version_info[1])"],
+        mostrar=False, tempo=60,
+    )
+
+    try:
+        partes = saida.strip().split()[-2:]
+        return (int(partes[0]), int(partes[1]))
+    except Exception:
+        return None
+
+
 def criar_ambiente():
     passo("Ambiente do projeto (.venv)")
 
@@ -225,15 +249,25 @@ def criar_ambiente():
     if vpy.exists():
         ok, _ = roda([str(vpy), "-c", "import sys"], mostrar=False, tempo=60)
 
-        if ok:
+        versao = versao_do_venv(vpy) if ok else None
+
+        if ok and (versao is None or versao_serve(versao)):
             print("   já existe e funciona.")
             anotar(True, "ambiente .venv")
             return vpy
 
         # Um .venv copiado de OUTRA maquina guarda o caminho do Python
-        # de origem dentro de si e nao roda aqui. Guarda e refaz.
-        print("   o .venv que está aqui não roda nesta máquina (veio de")
-        print("   outro computador). Guardando como .venv_antigo.")
+        # de origem dentro de si e nao roda aqui. Guarda e refaz. O
+        # mesmo vale para um .venv feito com um Python novo demais.
+        if ok:
+            print(f"   o .venv usa o Python {versao[0]}.{versao[1]}, e o "
+                  "pyaudio (microfone)")
+            print("   não tem versão pronta para ele. Vou refazer com o "
+                  "Python certo.")
+            print("   O antigo fica como .venv_antigo.")
+        else:
+            print("   o .venv que está aqui não roda nesta máquina (veio de")
+            print("   outro computador). Guardando como .venv_antigo.")
 
         velho = AQUI / ".venv_antigo"
 
@@ -548,6 +582,16 @@ def main():
         print(" Este Python é antigo demais. Instale o 3.12 em")
         print(" https://www.python.org/downloads/ e rode de novo.")
         return 1
+
+    if not versao_serve(sys.version_info):
+        print()
+        print(" Atenção: este Python é o "
+              f"{sys.version_info[0]}.{sys.version_info[1]}. O microfone "
+              "(pyaudio) não tem")
+        print(" versão pronta para ele e a instalação provavelmente vai "
+              "falhar nesse pedaço.")
+        print(" O certo é rodar pelo Instalar.bat, que usa o Python 3.12 "
+              "(e o instala se faltar).")
 
     if so_conferir:
         vpy = python_do_venv()

@@ -1,5 +1,5 @@
 # Instalados pelo Instalar.bat, em blocos: se um falhar (o pyaudio e o
-# costumeiro em maquina nova), os outros entram e a NEBELL abre mesmo
+# costumeiro em maquina nova; ele so tem versao pronta ate o Python 3.12), os outros entram e a NEBELL abre mesmo
 # assim, so sem aquele recurso.
 #
 # Para instalar na mao:  .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -11,6 +11,10 @@ requests
 # escuta por voz
 faster-whisper
 SpeechRecognition
+
+# escuta na placa de video (DLLs que o faster-whisper usa na GPU)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
 
 # audio do microfone (permite cortar a fala no meio)
 pyaudio

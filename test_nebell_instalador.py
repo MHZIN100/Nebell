@@ -424,6 +424,70 @@ class TestTudoJunto(InstaladorTest):
         self.assertFalse(pasta.exists())
 
 
+class TestVersaoDoPython(unittest.TestCase):
+    """O pyaudio so tem versao pronta ate o Python 3.12; no 3.14 o pip
+    tenta compilar e morre pedindo o Visual C++. O instalador tem que
+    escolher e exigir o Python certo."""
+
+    def test_faixa_aceita(self):
+        for v in [(3, 10), (3, 11), (3, 12)]:
+            self.assertTrue(I.versao_serve(v), v)
+
+    def test_faixa_recusada(self):
+        for v in [(3, 9), (3, 13), (3, 14)]:
+            self.assertFalse(I.versao_serve(v), v)
+
+    def test_bat_so_aceita_a_mesma_faixa(self):
+        bat = (Path(I.__file__).parent / "Instalar.bat").read_text(
+            encoding="utf-8", errors="replace")
+
+        self.assertIn("(3,10) <= sys.version_info[:2] <= (3,12)", bat)
+        self.assertNotIn('"py -3"', bat)
+        self.assertNotIn("Python313", bat)
+        self.assertIn("py -%%V", bat)
+
+    def test_venv_com_python_novo_demais_e_refeito(self):
+        with TemporaryDirectory() as t:
+            raiz = Path(t)
+            vpy = raiz / ".venv" / "Scripts" / "python.exe"
+            vpy.parent.mkdir(parents=True)
+            vpy.write_text("x")
+
+            with mock.patch.object(I, "AQUI", raiz), \
+                 mock.patch.object(I, "VENV", raiz / ".venv"), \
+                 mock.patch.object(I, "python_do_venv", return_value=vpy), \
+                 mock.patch.object(I, "roda", return_value=(True, "3 14")), \
+                 mock.patch.object(I, "passo"), \
+                 mock.patch.object(I, "anotar"), \
+                 mock.patch("builtins.print"):
+                I.criar_ambiente()
+
+            self.assertTrue((raiz / ".venv_antigo").exists())
+
+    def test_venv_com_python_certo_e_mantido(self):
+        with TemporaryDirectory() as t:
+            raiz = Path(t)
+            vpy = raiz / ".venv" / "Scripts" / "python.exe"
+            vpy.parent.mkdir(parents=True)
+            vpy.write_text("x")
+
+            with mock.patch.object(I, "AQUI", raiz), \
+                 mock.patch.object(I, "VENV", raiz / ".venv"), \
+                 mock.patch.object(I, "python_do_venv", return_value=vpy), \
+                 mock.patch.object(I, "roda", return_value=(True, "3 12")), \
+                 mock.patch.object(I, "passo"), \
+                 mock.patch.object(I, "anotar"), \
+                 mock.patch("builtins.print"):
+                self.assertEqual(I.criar_ambiente(), vpy)
+
+            self.assertFalse((raiz / ".venv_antigo").exists())
+
+    def test_bibliotecas_da_placa_de_video_estao_no_instalador(self):
+        pacotes = [p for _, bloco in I.BLOCOS for p in bloco]
+        self.assertIn("nvidia-cublas-cu12", pacotes)
+        self.assertIn("nvidia-cudnn-cu12", pacotes)
+
+
 class TestMedidas(unittest.TestCase):
     def test_tamanho_legivel(self):
         self.assertEqual(I.tamanho_legivel(0), "0 B")

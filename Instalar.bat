@@ -46,27 +46,26 @@ set "PY="
 call :testar "%~dp0.venv\Scripts\python.exe"
 if defined PY goto achou
 
-py -3 -c "import sys" >nul 2>&1
-if not errorlevel 1 (
-    set "PY=py -3"
-    goto achou
+for %%V in (3.12 3.11 3.10) do (
+    py -%%V -c "import sys" >nul 2>&1
+    if not errorlevel 1 (
+        set "PY=py -%%V"
+        goto achou
+    )
 )
 
-python -c "import sys" >nul 2>&1
+python -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" >nul 2>&1
 if not errorlevel 1 (
     set "PY=python"
     goto achou
 )
 
 for %%D in (
-    "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
-    "C:\Python313\python.exe"
     "C:\Python312\python.exe"
     "C:\Python311\python.exe"
-    "C:\Program Files\Python313\python.exe"
     "C:\Program Files\Python312\python.exe"
     "C:\Program Files\Python311\python.exe"
 ) do (
@@ -80,7 +79,9 @@ rem ---------------------------------------------------------------
 
 echo.
 echo ----------------------------------------------------------------
-echo  Nao achei Python nesta maquina. Vou baixar e instalar.
+echo  Nao achei um Python adequado (3.10 a 3.12) nesta maquina.
+echo  Vou baixar e instalar o 3.12. Outro Python que voce tenha
+echo  continua la, sem mexer.
 echo ----------------------------------------------------------------
 echo.
 
@@ -106,16 +107,15 @@ rem O PATH desta janela nao enxerga o que acabou de ser instalado,
 rem entao procura direto onde o instalador poe.
 for %%D in (
     "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
     "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 ) do (
     call :testar %%D
     if defined PY goto achou
 )
 
-py -3 -c "import sys" >nul 2>&1
+py -3.12 -c "import sys" >nul 2>&1
 if not errorlevel 1 (
-    set "PY=py -3"
+    set "PY=py -3.12"
     goto achou
 )
 
@@ -156,9 +156,11 @@ exit /b 0
 
 rem ---------------------------------------------------------------
 :testar
-rem  Aceita o caminho so se ele executar de verdade.
+rem  Aceita o caminho so se ele executar de verdade E for um Python
+rem  em que os pacotes de audio existem prontos (3.10 a 3.12). No 3.13
+rem  e no 3.14 o pyaudio nao tem versao pronta e exigiria compilador.
 if not exist %1 exit /b 0
-%1 -c "import sys" >nul 2>&1
+%1 -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" >nul 2>&1
 if errorlevel 1 exit /b 0
 set "PY=%~1"
 exit /b 0
