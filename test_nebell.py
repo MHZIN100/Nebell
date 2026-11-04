@@ -4939,8 +4939,20 @@ class TestPastasDoUsuario(NebellTest):
         ):
             destino = J.pasta_do_usuario(falado)
             self.assertIsNotNone(destino, falado)
-            self.assertIn(
-                esperado.lower(), str(destino).lower(), falado
+
+            # Num Windows em portugues a pasta real se chama
+            # "Documentos", "Imagens", "Area de Trabalho" -- e o
+            # codigo acerta ao devolver o nome que existe de verdade.
+            nomes = {
+                "Documents": ("documents", "documentos"),
+                "Pictures": ("pictures", "imagens"),
+                "Desktop": ("desktop", "trabalho"),
+                "Downloads": ("downloads", "transfer"),
+            }[esperado]
+            caminho = str(destino).lower()
+
+            self.assertTrue(
+                any(n in caminho for n in nomes), f"{falado}: {destino}"
             )
 
     def test_pasta_pessoal(self):
