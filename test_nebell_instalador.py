@@ -236,6 +236,25 @@ class TestModelo(InstaladorTest):
 
         self.assertTrue(any("ollama pull" in t for t in self.faltas()))
 
+    def test_pull_que_cai_e_tentado_de_novo(self):
+        # O download e grande e pode cair; o "ollama pull" retoma, entao
+        # o instalador tenta de novo antes de desistir.
+        tentativas = []
+
+        def resposta(comando, **kw):
+            if "pull" in comando:
+                tentativas.append(1)
+                # cai nas duas primeiras, dá certo na terceira
+                return (len(tentativas) >= 3, "")
+            return (True, "vazio")
+
+        with mock.patch.object(I, "achar_ollama", return_value="ollama"), \
+                mock.patch.object(I, "roda", side_effect=resposta):
+            self.assertTrue(I.baixar_modelo())
+
+        self.assertEqual(len(tentativas), 3)
+        self.assertEqual(self.faltas(), [])
+
 
 # ============================================================
 # VOZ

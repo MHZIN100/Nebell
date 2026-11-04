@@ -431,14 +431,26 @@ def baixar_modelo():
 
     print("   baixando. Isso demora; o Ollama mostra o andamento.")
     print()
-    ok, _ = roda([ollama, "pull", MODELO], mostrar=True, tempo=7200)
 
-    if ok:
-        anotar(True, f"modelo {MODELO}")
-        return True
+    # O download sao ~2,5 GB. Se a conexao oscila, o pull cai no meio
+    # e deixa so parte dos blobs. O "ollama pull" retoma de onde parou,
+    # entao vale a pena tentar de novo algumas vezes antes de desistir.
+    for tentativa in range(1, 4):
+        ok, _ = roda([ollama, "pull", MODELO], mostrar=True, tempo=7200)
+
+        if ok:
+            anotar(True, f"modelo {MODELO}")
+            return True
+
+        if tentativa < 3:
+            print()
+            print(f"   o download caiu. Tentando retomar "
+                  f"({tentativa + 1}/3)...")
+            print()
 
     print()
-    print(f"   não deu. Depois rode na mão:  ollama pull {MODELO}")
+    print(f"   não deu, mesmo tentando 3 vezes. Depois rode na mão (ele")
+    print(f"   retoma de onde parou):  ollama pull {MODELO}")
     anotar(False, f"modelo {MODELO} — rode: ollama pull {MODELO}")
     return False
 
