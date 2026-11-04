@@ -850,6 +850,58 @@ class TestVozDownload(unittest.TestCase):
         self.assertEqual(destino.read_bytes(), b"abcdef")
         self.assertTrue(avisos)
 
+    def test_retoma_de_onde_parou_quando_a_conexao_cai(self):
+        """
+        O bug real: a voz baixava pela metade e virava um model.onnx
+        quebrado. Agora, se a conexão cai no meio, a próxima passada
+        continua pelo Range e o arquivo só é salvo quando chega inteiro.
+        """
+        destino = self.tmp / "model.onnx"
+        TOTAL = b"abcdefghij"  # 10 bytes
+
+        class Resp:
+            def __init__(self, dados, status, headers):
+                self._d = bytearray(dados)
+                self.status = status
+                self.headers = headers
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self, n):
+                pedaco = bytes(self._d[:3])
+                del self._d[:3]
+                return pedaco
+
+        chamadas = []
+
+        def fake_urlopen(req, timeout=None):
+            rng = req.headers.get("Range")
+            chamadas.append(rng)
+
+            if not rng:
+                # Primeira vez: anuncia 10 bytes mas só entrega 3 (caiu).
+                return Resp(TOTAL[:3], 200, {"Content-Length": "10"})
+
+            ini = int(rng.split("=")[1].split("-")[0])
+            return Resp(
+                TOTAL[ini:], 206,
+                {"Content-Length": str(10 - ini),
+                 "Content-Range": f"bytes {ini}-9/10"},
+            )
+
+        with mock.patch.object(V.urllib.request, "urlopen", fake_urlopen):
+            deu, _ = V.baixar_arquivo("https://x/y", destino)
+
+        self.assertTrue(deu)
+        self.assertEqual(destino.read_bytes(), TOTAL)
+        # A segunda tentativa pediu o resto a partir do que já tinha.
+        self.assertGreaterEqual(len(chamadas), 2)
+        self.assertTrue(chamadas[1] and chamadas[1].startswith("bytes=3-"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

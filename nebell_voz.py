@@ -57,10 +57,90 @@ TAMANHO_MINIMO = 10 * 1024 * 1024
 TEMPO_LIMITE = 90
 
 
+TENTATIVAS = 5
+
+
+def _uma_tentativa(url, parcial, progresso):
+    """
+    Uma passada do download, RETOMANDO o que já houver em .parcial.
+
+    Devolve (ok, total, baixado, falha). `ok` só é True quando o arquivo
+    chegou ao fim (baixado == total). Se a conexão cai no meio, devolve
+    ok=False mas deixa o .parcial no disco para a próxima passada
+    continuar de onde parou.
+    """
+    ja = parcial.stat().st_size if parcial.exists() else 0
+
+    cabecalhos = {"User-Agent": "NEBELL/1.0"}
+    if ja:
+        # Pede só o que falta. A HuggingFace responde 206 e manda o resto.
+        cabecalhos["Range"] = f"bytes={ja}-"
+
+    pedido = urllib.request.Request(url, headers=cabecalhos)
+
+    with urllib.request.urlopen(pedido, timeout=TEMPO_LIMITE) as resposta:
+        tam_resto = int(resposta.headers.get("Content-Length") or 0)
+
+        # O código HTTP só importa quando pedimos uma faixa (Range): aí
+        # 206 confirma que o servidor vai mandar só o resto. Nem toda
+        # resposta expõe .status/.getcode(), então é tudo defensivo.
+        retomou = False
+        if ja:
+            codigo = getattr(resposta, "status", None)
+            if codigo is None:
+                try:
+                    codigo = resposta.getcode()
+                except Exception:
+                    codigo = 200
+            retomou = codigo == 206
+
+        # Se mandamos Range e o servidor respondeu 206, o total vem no
+        # Content-Range (bytes ini-fim/TOTAL). Senão o corpo é o arquivo
+        # inteiro e recomeçamos do zero.
+        if retomou:
+            faixa = resposta.headers.get("Content-Range", "")
+            total = int(faixa.split("/")[-1]) if "/" in faixa else (ja + tam_resto)
+            modo = "ab"
+            baixado = ja
+        else:
+            total = tam_resto
+            modo = "wb"
+            baixado = 0
+            ja = 0
+
+        ultimo_aviso = baixado
+
+        with open(parcial, modo) as arquivo:
+            while True:
+                bloco = resposta.read(262144)
+
+                if not bloco:
+                    break
+
+                arquivo.write(bloco)
+                baixado += len(bloco)
+
+                if progresso and baixado - ultimo_aviso >= 2 * 1024 * 1024:
+                    ultimo_aviso = baixado
+                    progresso(baixado, total)
+
+    if progresso:
+        progresso(baixado, total or baixado)
+
+    # Só está completo se bateu o tamanho anunciado. Content-Length
+    # desconhecido (total == 0) cai no mínimo que o conferir() cobra.
+    ok = total > 0 and baixado >= total
+    return ok, total, baixado, "" if ok else "conexão caiu no meio"
+
+
 def baixar_arquivo(url, destino, progresso=None):
     """
-    Baixa um arquivo. Grava em .parcial e so renomeia no fim, para um
-    download interrompido nunca virar um arquivo quebrado no lugar certo.
+    Baixa um arquivo com RETOMADA: grava em .parcial, continua de onde
+    parou se a conexão cair, e só renomeia para o nome final quando o
+    arquivo chegou INTEIRO (o tamanho bate com o que o servidor anunciou).
+
+    Assim um download cortado nunca mais vira uma voz pela metade no
+    lugar certo — era o que corrompia o model.onnx.
 
     `progresso` recebe (baixado, total) de vez em quando.
     """
@@ -68,43 +148,42 @@ def baixar_arquivo(url, destino, progresso=None):
     parcial = destino.with_suffix(destino.suffix + ".parcial")
     destino.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        pedido = urllib.request.Request(
-            url, headers={"User-Agent": "NEBELL/1.0"}
-        )
+    falha = "não tentou"
 
-        with urllib.request.urlopen(pedido, timeout=TEMPO_LIMITE) as resposta:
-            total = int(resposta.headers.get("Content-Length") or 0)
-            baixado = 0
-            ultimo_aviso = 0
+    for tentativa in range(1, TENTATIVAS + 1):
+        try:
+            ok, total, baixado, falha = _uma_tentativa(url, parcial, progresso)
 
-            with open(parcial, "wb") as arquivo:
-                while True:
-                    bloco = resposta.read(262144)
+            if ok:
+                parcial.replace(destino)
+                return True, ""
 
-                    if not bloco:
-                        break
+            # Servidor não informou o tamanho: não dá para garantir que
+            # veio inteiro pela retomada. Aceita o que veio e deixa o
+            # conferir() barrar se ficou pequeno.
+            if total == 0 and parcial.exists() and parcial.stat().st_size > 0:
+                parcial.replace(destino)
+                return True, ""
 
-                    arquivo.write(bloco)
-                    baixado += len(bloco)
+        except urllib.error.HTTPError as erro:
+            falha = f"HTTP {erro.code}"
 
-                    if progresso and baixado - ultimo_aviso >= 2 * 1024 * 1024:
-                        ultimo_aviso = baixado
-                        progresso(baixado, total)
+            # 416 = pedimos uma faixa além do fim: o .parcial está corrompido
+            # ou já completo. Recomeça do zero na próxima.
+            if erro.code == 416:
+                try:
+                    parcial.unlink()
+                except Exception:
+                    pass
+        except urllib.error.URLError as erro:
+            falha = str(erro.reason)
+        except Exception as erro:
+            falha = str(erro)
 
-        if progresso:
-            progresso(baixado, total or baixado)
+        # Entre as tentativas o .parcial FICA no disco de propósito: a
+        # próxima passada continua de onde parou (Range).
 
-        parcial.replace(destino)
-        return True, ""
-
-    except urllib.error.HTTPError as erro:
-        falha = f"HTTP {erro.code}"
-    except urllib.error.URLError as erro:
-        falha = str(erro.reason)
-    except Exception as erro:
-        falha = str(erro)
-
+    # Desistiu de vez: não deixa um pedaço solto no disco.
     try:
         if parcial.exists():
             parcial.unlink()
