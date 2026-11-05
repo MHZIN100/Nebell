@@ -146,72 +146,95 @@ def existe_programa(nome):
 # BAIXAR
 # ============================================================
 
-def baixar(url, destino, rotulo):
-    """Baixa mostrando o andamento. Devolve True se o arquivo chegou."""
+def baixar(url, destino, rotulo, tentativas=3):
+    """
+    Baixa mostrando o andamento. Devolve True só quando o arquivo chega
+    INTEIRO (o tamanho bate com o que o servidor anunciou). Se a conexão
+    cai no meio, tenta de novo algumas vezes, do zero -- é mais seguro
+    para um .exe do que emendar um pedaço talvez corrompido.
+    """
     print(f"   baixando {rotulo} ...")
     print(f"   {url}")
 
     contexto = ssl.create_default_context()
-    comecou = time.time()
-    ultimo = [0.0]
+    falha = ""
 
-    def andamento(blocos, tamanho_bloco, total):
-        if total <= 0:
-            return
+    for tentativa in range(1, tentativas + 1):
+        comecou = time.time()
+        ultimo = [0.0]
 
-        agora = time.time()
+        def andamento(feito, total):
+            if total <= 0:
+                return
 
-        if agora - ultimo[0] < 0.6 and blocos * tamanho_bloco < total:
-            return
+            agora = time.time()
 
-        ultimo[0] = agora
-        feito = min(total, blocos * tamanho_bloco)
-        pc = feito * 100 / total
-        print(
-            f"\r   {pc:5.1f}%  {tamanho_legivel(feito)} de "
-            f"{tamanho_legivel(total)}      ",
-            end="",
-            flush=True,
-        )
+            if agora - ultimo[0] < 0.6 and feito < total:
+                return
 
-    try:
-        pedido = urllib.request.Request(
-            url, headers={"User-Agent": "NEBELL-instalador"}
-        )
+            ultimo[0] = agora
+            feito = min(total, feito)
+            pc = feito * 100 / total
+            print(
+                f"\r   {pc:5.1f}%  {tamanho_legivel(feito)} de "
+                f"{tamanho_legivel(total)}      ",
+                end="",
+                flush=True,
+            )
 
-        with urllib.request.urlopen(pedido, context=contexto, timeout=60) as f:
-            total = int(f.headers.get("Content-Length") or 0)
-            destino.parent.mkdir(parents=True, exist_ok=True)
-            feito = 0
+        try:
+            pedido = urllib.request.Request(
+                url, headers={"User-Agent": "NEBELL-instalador"}
+            )
 
-            with open(destino, "wb") as saida:
-                while True:
-                    pedaco = f.read(65536)
+            with urllib.request.urlopen(
+                pedido, context=contexto, timeout=60
+            ) as f:
+                total = int(f.headers.get("Content-Length") or 0)
+                destino.parent.mkdir(parents=True, exist_ok=True)
+                feito = 0
 
-                    if not pedaco:
-                        break
+                with open(destino, "wb") as saida:
+                    while True:
+                        pedaco = f.read(65536)
 
-                    saida.write(pedaco)
-                    feito += len(pedaco)
-                    andamento(feito // 65536 + 1, 65536, total)
+                        if not pedaco:
+                            break
 
-        print()
-        levou = time.time() - comecou
-        print(f"   pronto: {tamanho_legivel(destino.stat().st_size)} "
-              f"em {levou:.0f}s")
-        return True
+                        saida.write(pedaco)
+                        feito += len(pedaco)
+                        andamento(feito, total)
 
-    except Exception as exc:
-        print()
-        print(f"   não consegui baixar: {exc}")
+            print()
 
-        if destino.exists():
-            try:
-                destino.unlink()
-            except Exception:
-                pass
+            # Download cortado: o servidor disse um tamanho e veio menos.
+            # Um .exe pela metade "instala" e falha de um jeito confuso.
+            if total > 0 and feito < total:
+                raise OSError(
+                    f"veio só {tamanho_legivel(feito)} de "
+                    f"{tamanho_legivel(total)}"
+                )
 
-        return False
+            levou = time.time() - comecou
+            print(f"   pronto: {tamanho_legivel(destino.stat().st_size)} "
+                  f"em {levou:.0f}s")
+            return True
+
+        except Exception as exc:
+            falha = str(exc)
+            print()
+            print(f"   não consegui baixar: {falha}")
+
+            if destino.exists():
+                try:
+                    destino.unlink()
+                except Exception:
+                    pass
+
+            if tentativa < tentativas:
+                print(f"   tentando de novo ({tentativa + 1}/{tentativas})...")
+
+    return False
 
 
 # ============================================================
@@ -303,15 +326,31 @@ def instalar_pacotes(vpy):
 
     for numero, (nome, pacotes) in enumerate(BLOCOS, start=1):
         print(f"\n   [{numero}/{len(BLOCOS)}] {nome}: {', '.join(pacotes)}")
-        ok, saida = roda(
-            [str(vpy), "-m", "pip", "install", "--quiet", *pacotes],
-            mostrar=False, tempo=1800,
-        )
+
+        # Cada bloco é tentado mais de uma vez: numa conexão instável um
+        # download do pip cai, mas o pip retoma o que já baixou, então
+        # repetir costuma resolver sem precisar rodar o instalador de novo.
+        # O --retries/--timeout fazem o próprio pip insistir em cada pacote.
+        ok, saida = False, ""
+
+        for tentativa in range(1, 4):
+            ok, saida = roda(
+                [str(vpy), "-m", "pip", "install",
+                 "--retries", "5", "--timeout", "60", "--quiet", *pacotes],
+                mostrar=False, tempo=1800,
+            )
+
+            if ok:
+                break
+
+            if tentativa < 3:
+                print(f"   a conexão falhou; tentando de novo "
+                      f"({tentativa + 1}/3)...")
 
         if ok:
             print("   ok")
         else:
-            print("   não entrou. O resto continua.")
+            print("   não entrou, mesmo tentando 3 vezes. O resto continua.")
             ultimas = [l for l in saida.strip().split("\n") if l.strip()][-3:]
 
             for linha in ultimas:

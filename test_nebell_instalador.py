@@ -358,8 +358,35 @@ class TestPacotes(InstaladorTest):
         with mock.patch.object(I, "roda", side_effect=resposta):
             I.instalar_pacotes(Path("python"))
 
-        self.assertEqual(len(tentados), len(I.BLOCOS))
+        # Todo bloco é tentado (o que falha é repetido, então pode
+        # aparecer mais de uma vez); o pyaudio, que falha sempre, é o
+        # único reportado como falta.
+        blocos_tentados = {tuple(p) for p in tentados}
+        self.assertEqual(len(blocos_tentados), len(I.BLOCOS))
         self.assertTrue(any("áudio" in t for t in self.faltas()))
+
+    def test_bloco_que_falha_e_tentado_de_novo(self):
+        # Uma queda passageira não pode virar falta: o bloco é repetido.
+        tentativas = {"n": 0}
+
+        def resposta(comando, **kw):
+            if "install" in comando and "--quiet" in comando:
+                pacotes = comando[comando.index("--quiet") + 1:]
+
+                if "faster-whisper" in pacotes:
+                    tentativas["n"] += 1
+                    # cai nas duas primeiras, entra na terceira
+                    return (tentativas["n"] >= 3, "timeout")
+
+                return (True, "")
+
+            return (True, "")
+
+        with mock.patch.object(I, "roda", side_effect=resposta):
+            I.instalar_pacotes(Path("python"))
+
+        self.assertEqual(tentativas["n"], 3)
+        self.assertEqual(self.faltas(), [])
 
     def test_tudo_certo_nao_gera_falta(self):
         with mock.patch.object(I, "roda", return_value=(True, "")):
