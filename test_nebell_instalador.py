@@ -430,6 +430,63 @@ class TestTudoJunto(InstaladorTest):
 
         self.assertIn("Iniciar_NEBELL.bat", saida.getvalue())
 
+    def test_repete_sozinho_o_que_faltou_sem_reabrir(self):
+        # O caso real: a conexão cai no meio e um passo não entra. O
+        # instalador deve repetir sozinho e terminar numa execução só,
+        # em vez de a pessoa reabrir o Instalar.bat.
+        vezes = {"voz": 0}
+
+        def voz(vpy):
+            vezes["voz"] += 1
+            if vezes["voz"] == 1:
+                I.anotar(False, "voz — a conexão caiu")
+                return False
+            return True
+
+        with mock.patch.object(I, "criar_ambiente", return_value=Path("py")), \
+                mock.patch.object(I, "instalar_pacotes"), \
+                mock.patch.object(I, "instalar_ollama", return_value=True), \
+                mock.patch.object(I, "baixar_modelo", return_value=True), \
+                mock.patch.object(I, "baixar_voz", side_effect=voz), \
+                mock.patch.object(I, "instalar_tesseract", return_value=True), \
+                mock.patch.object(I, "conferir", return_value=set()), \
+                mock.patch.object(I, "PAUSA_ENTRE_PASSADAS", 0), \
+                mock.patch.object(sys, "argv", ["instalar.py"]):
+            saida = io.StringIO()
+
+            with mock.patch("sys.stdout", saida):
+                self.assertEqual(I.main(), 0)
+
+        # Repetiu a voz (2ª passada) e terminou sem falta.
+        self.assertEqual(vezes["voz"], 2)
+        self.assertEqual(self.faltas(), [])
+        self.assertIn("Está tudo pronto", saida.getvalue())
+
+    def test_para_de_repetir_quando_nao_avanca(self):
+        # Se uma passada inteira não avança nada, insistir não resolve:
+        # para e mostra o resumo, sem ficar repetindo à toa.
+        vezes = {"voz": 0}
+
+        def voz(vpy):
+            vezes["voz"] += 1
+            I.anotar(False, "voz — sem internet")
+            return False
+
+        with mock.patch.object(I, "criar_ambiente", return_value=Path("py")), \
+                mock.patch.object(I, "instalar_pacotes"), \
+                mock.patch.object(I, "instalar_ollama", return_value=True), \
+                mock.patch.object(I, "baixar_modelo", return_value=True), \
+                mock.patch.object(I, "baixar_voz", side_effect=voz), \
+                mock.patch.object(I, "instalar_tesseract", return_value=True), \
+                mock.patch.object(I, "conferir", return_value=set()), \
+                mock.patch.object(I, "PAUSA_ENTRE_PASSADAS", 0), \
+                mock.patch.object(sys, "argv", ["instalar.py"]):
+            with mock.patch("sys.stdout", io.StringIO()):
+                I.main()
+
+        # Não avançou: parou em 2 passadas, não nas 6.
+        self.assertEqual(vezes["voz"], 2)
+
     def test_sem_ambiente_para_e_avisa(self):
         with mock.patch.object(I, "criar_ambiente", return_value=None), \
                 mock.patch.object(I, "instalar_pacotes") as pacotes, \

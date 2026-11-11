@@ -82,6 +82,13 @@ ESSENCIAIS = {"piper", "requests"}
 
 recado = []
 
+# Quantas vezes o instalador repete sozinho os passos que faltaram antes
+# de desistir, e a pausa entre as repetições. Numa conexão instável um
+# download cai no meio; repetir aproveita o que já entrou e termina o
+# resto, sem a pessoa ter que reabrir o instalador.
+MAX_PASSADAS = 6
+PAUSA_ENTRE_PASSADAS = 3
+
 
 def anotar(ok, texto):
     recado.append((ok, texto))
@@ -364,7 +371,7 @@ def instalar_pacotes(vpy):
         anotar(True, "pacotes do Python")
 
 
-def instalar_ollama():
+def instalar_ollama(permitir_gui=True):
     """
     O Ollama e quem pensa. Sem ele o NEBELL abre mas nao responde.
 
@@ -405,7 +412,7 @@ def instalar_ollama():
     # procura no lugar onde o instalador poe.
     achou = achar_ollama()
 
-    if not achou:
+    if not achou and permitir_gui:
         print()
         print("   A instalação silenciosa não pegou. Vou abrir o")
         print("   instalador na tela: clique em avançar até o fim e")
@@ -661,17 +668,50 @@ def main():
         print(" Sem o ambiente do Python não dá para seguir.")
         return 1
 
-    instalar_pacotes(vpy)
-    tem_ollama = instalar_ollama()
+    # Repete os passos que faltaram até tudo entrar. Cada passo já pula
+    # o que está pronto (o pip nem rebaixa o que instalou), então repetir
+    # só retoma o que a conexão derrubou. Para cedo quando uma passada
+    # inteira não avança nada -- aí não é conexão, é algo que insistir
+    # não resolve, e o resumo no fim diz o que foi.
+    progresso_antes = -1
 
-    if tem_ollama:
-        baixar_modelo()
-    else:
-        anotar(False, f"modelo {MODELO} — pulado, falta o Ollama")
+    for passada in range(1, MAX_PASSADAS + 1):
+        recado.clear()
 
-    baixar_voz(vpy)
-    instalar_tesseract(sem_tesseract)
-    conferir(vpy)
+        instalar_pacotes(vpy)
+        tem_ollama = instalar_ollama(permitir_gui=(passada == 1))
+
+        if tem_ollama:
+            baixar_modelo()
+        else:
+            anotar(False, f"modelo {MODELO} — pulado, falta o Ollama")
+
+        baixar_voz(vpy)
+        instalar_tesseract(sem_tesseract)
+        presentes = conferir(vpy)
+
+        faltas = [t for ok, t in recado if not ok]
+
+        if not faltas:
+            break
+
+        # Mediu progresso pelo nº de módulos já presentes. Se não subiu
+        # desde a última passada, insistir não está adiantando.
+        progresso = len(presentes)
+
+        if progresso <= progresso_antes:
+            break
+
+        progresso_antes = progresso
+
+        if passada < MAX_PASSADAS:
+            titulo(f"Ainda faltou coisa — repetindo sozinho "
+                   f"(passada {passada + 1} de {MAX_PASSADAS})")
+            print(" Costuma ser a conexão caindo no meio de um download.")
+            print(" O que já entrou fica; só o que faltou é baixado de novo.")
+            print(" Não precisa reabrir o instalador — ele continua.")
+            time.sleep(PAUSA_ENTRE_PASSADAS)
+
     limpar_downloads()
 
     # ---- relatorio ----
