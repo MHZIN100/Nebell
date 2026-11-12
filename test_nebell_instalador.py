@@ -315,6 +315,31 @@ class TestTesseract(NoWindows):
 
         self.assertEqual(self.faltas(), [])
 
+    def test_instala_pelo_winget_sem_baixar(self):
+        # O mirror do Tesseract anda recusando download automático (403).
+        # Quando há winget, instala por ele e nem toca no mirror.
+        import os
+
+        padrao = (Path(os.environ["PROGRAMFILES"]) / "Tesseract-OCR"
+                  / "tesseract.exe")
+
+        def tem(nome):
+            return nome == "winget"
+
+        def roda_finge_winget(comando, **kw):
+            if comando and comando[0] == "winget":
+                padrao.parent.mkdir(parents=True, exist_ok=True)
+                padrao.write_text("x")
+            return (True, "")
+
+        with mock.patch.object(I, "existe_programa", side_effect=tem), \
+                mock.patch.object(I, "baixar") as baixou, \
+                mock.patch.object(I, "roda", side_effect=roda_finge_winget):
+            self.assertTrue(I.instalar_tesseract(pular=False))
+
+        baixou.assert_not_called()
+        self.assertEqual(self.faltas(), [])
+
     def test_tenta_as_outras_versoes(self):
         # O nome do instalador muda a cada versao; tem de tentar mais
         # de um antes de desistir.

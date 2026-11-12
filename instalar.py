@@ -557,19 +557,48 @@ def instalar_tesseract(pular):
         anotar(False, "Tesseract — instale pelo gerenciador do sistema")
         return False
 
+    # Primeiro pelo winget, que vem no Windows 10/11: ele baixa o
+    # Tesseract pela via oficial, sem passar pelo mirror que anda
+    # recusando download automático (403).
+    if existe_programa("winget"):
+        print("   instalando pelo winget (gerenciador do Windows) ...")
+        roda(
+            ["winget", "install", "--id", "UB-Mannheim.TesseractOCR",
+             "-e", "--silent", "--accept-source-agreements",
+             "--accept-package-agreements"],
+            mostrar=True, tempo=1200,
+        )
+
+        if padrao.is_file() or existe_programa("tesseract"):
+            print("   instalado pelo winget.")
+            print("   Obs.: se ele não ler em português, abra o instalador")
+            print("   do Tesseract e marque 'Portuguese' nos idiomas.")
+            anotar(True, "Tesseract (OCR)")
+            return True
+
+        print("   o winget não concluiu; vou tentar baixar direto.")
+
     destino = AQUI / "_download" / "tesseract.exe"
     veio = False
 
     for url in TESSERACT_URLS:
-        if baixar(url, destino, "o instalador do Tesseract"):
+        # Uma tentativa por versão: se o mirror recusa (403), insistir na
+        # mesma não muda nada; é melhor passar para a próxima versão.
+        if baixar(url, destino, "o instalador do Tesseract", tentativas=1):
             veio = True
             break
 
         print("   tentando outra versão ...")
+        time.sleep(2)
 
     if not veio:
-        print(f"   não consegui baixar. Se quiser OCR: {TESSERACT_PAGINA}")
-        anotar(False, "Tesseract (opcional) — " + TESSERACT_PAGINA)
+        print("   não consegui baixar o Tesseract (o servidor dele recusou).")
+        print("   Como é opcional, o resto da NEBELL funciona sem ele.")
+        print("   Para ter OCR depois, no PowerShell:")
+        print("      winget install UB-Mannheim.TesseractOCR")
+        print(f"   ou baixe na mão em: {TESSERACT_PAGINA}")
+        anotar(False, "Tesseract (opcional) — winget install "
+               "UB-Mannheim.TesseractOCR")
         return False
 
     print("   instalando em silêncio (com o idioma português) ...")
