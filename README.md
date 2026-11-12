@@ -44,6 +44,25 @@ Instalar.bat --sem-tesseract
 .venv\Scripts\python.exe instalar.py --so-conferir
 ```
 
+### Se o Tesseract não baixar (erro 403)
+
+O Tesseract é **opcional** — ele só serve para a NEBELL ler texto da sua
+tela. Todo o resto funciona sem ele.
+
+O servidor oficial do Tesseract às vezes recusa o download automático
+(responde "403 Forbidden"). Quando isso acontece, o instalador tenta
+instalar pelo **winget** (o gerenciador que vem no Windows 10/11). Se
+mesmo assim não entrar, instale você mesmo, no PowerShell:
+
+```
+winget install UB-Mannheim.TesseractOCR
+```
+
+ou baixe o instalador na mão em
+<https://github.com/UB-Mannheim/tesseract/wiki> e, na tela de idiomas,
+marque **Portuguese**. O resto da NEBELL continua funcionando enquanto
+isso.
+
 ---
 
 ## O que ela faz
