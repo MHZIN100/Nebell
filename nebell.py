@@ -82,6 +82,11 @@ except Exception:
     nebell_voz = None
 
 try:
+    import nebell_kokoro
+except Exception:
+    nebell_kokoro = None
+
+try:
     import nebell_web
 except Exception:
     nebell_web = None
@@ -164,6 +169,18 @@ VOICE_PREFERENCE = ("nebell", "dii", "miro", "cadu", "faber")
 # Depois disso ela roda local, sem internet. Desligue se preferir
 # instalar a mao com o baixar_voz.py.
 AUTO_DOWNLOAD_VOICE = True
+
+# ---- motor de voz -----------------------------------------
+# "kokoro" é uma voz neural muito mais natural que o Piper e, mesmo
+# assim, leve: roda na CPU, em onnxruntime (o mesmo motor que o NEBELL
+# já usa), sem disputar a placa de vídeo com o Ollama. Se o kokoro-onnx
+# ou o modelo não estiverem na máquina, o NEBELL cai no Piper sozinho —
+# a voz nunca fica muda.
+USAR_KOKORO = True
+
+# Voz do Kokoro. pf_dora é feminina (pt-BR). Masculinas: pm_alex, pm_santa.
+KOKORO_VOZ = "pf_dora"
+KOKORO_VELOCIDADE = 1.0
 
 
 def descobrir_voz():
@@ -620,6 +637,8 @@ interaction_mode = "text"
 first_chunk_pending = True
 tools_supported = True
 voice = None
+kokoro_voz = None              # nebell_kokoro.VozKokoro quando o Kokoro está ativo
+VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
 mic_manager = None          # nebell_audio.MicManager
 hud = None                  # nebell_hud.HudBridge
 request_queue = queue.Queue()
@@ -1058,14 +1077,19 @@ def wav_duration(data):
 
 def synthesize_to_bytes(text):
     """Gera o WAV na memoria e devolve (bytes, duracao em segundos)."""
-    buffer = io.BytesIO()
-
     # O lock evita sintetizar com o modelo sendo trocado no meio.
-    with troca_de_voz, wave.open(buffer, "wb") as wav_file:
-        if synthesis_config is not None:
-            voice.synthesize_wav(text, wav_file, syn_config=synthesis_config)
-        else:
-            voice.synthesize_wav(text, wav_file)
+    with troca_de_voz:
+        # Voz neural (Kokoro) quando ativa; senão, Piper.
+        if kokoro_voz is not None:
+            return kokoro_voz.sintetizar(text)
+
+        buffer = io.BytesIO()
+
+        with wave.open(buffer, "wb") as wav_file:
+            if synthesis_config is not None:
+                voice.synthesize_wav(text, wav_file, syn_config=synthesis_config)
+            else:
+                voice.synthesize_wav(text, wav_file)
 
     data = buffer.getvalue()
     return data, wav_duration(data)
@@ -1742,14 +1766,52 @@ def voice_barge_in_watcher():
 
 def carregar_voz(caminho):
     """Carrega um modelo de voz e refaz o ajuste de sintese."""
-    global voice, VOICE_MODEL
+    global voice, VOICE_MODEL, VOZ_ROTULO
 
     nova = PiperVoice.load(str(caminho))
     voice = nova
     VOICE_MODEL = Path(caminho)
+    VOZ_ROTULO = f"Piper · {VOICE_MODEL.parent.name}"
     build_synthesis_config()
     _filler_cache.clear()
     return nova
+
+
+def preparar_kokoro():
+    """
+    Deixa a voz neural (Kokoro) pronta, baixando o modelo se preciso.
+
+    Devolve a VozKokoro pronta, ou None quando não dá — e aí o NEBELL
+    segue com o Piper. Nunca estoura: qualquer erro vira None.
+    """
+    global VOZ_ROTULO
+
+    if not (USAR_KOKORO and nebell_kokoro is not None
+            and nebell_kokoro.biblioteca_ok()):
+        return None
+
+    try:
+        if not nebell_kokoro.modelo_presente(VOICES_DIR):
+            if not AUTO_DOWNLOAD_VOICE:
+                return None
+
+            print("[Voz] Baixando o modelo de voz Kokoro (uma vez, ~350 MB)...")
+            deu, mensagem = nebell_kokoro.instalar(VOICES_DIR, log=print)
+            print(f"[Voz] {mensagem}")
+
+            if not deu:
+                return None
+
+        print(f"Carregando a voz Kokoro ({KOKORO_VOZ})...")
+        voz = nebell_kokoro.VozKokoro(
+            VOICES_DIR, voz=KOKORO_VOZ, velocidade=KOKORO_VELOCIDADE, log=print
+        )
+        VOZ_ROTULO = f"Kokoro · {voz.voz}"
+        return voz
+
+    except Exception as exc:
+        print(f"[Voz] Kokoro indisponível ({exc}). Vou usar o Piper.")
+        return None
 
 
 def garantir_voz():
@@ -1760,6 +1822,12 @@ def garantir_voz():
     Roda em segundo plano: se a internet estiver lenta, o NEBELL ja
     comeca a funcionar com a voz que houver.
     """
+    # Com o Kokoro ativo, não faz sentido baixar a voz do Piper em
+    # segundo plano: ela só serviria de reserva, e o download fica para
+    # quando (e se) o Kokoro faltar.
+    if kokoro_voz is not None:
+        return
+
     if not (AUTO_DOWNLOAD_VOICE and nebell_voz is not None):
         return
 
@@ -9077,6 +9145,7 @@ def hud_ready():
         on_microphone_change(mic_manager)
 
     hud.set_esforco_nivel(esforco_atual[0])
+    hud.set_stats(voice=VOZ_ROTULO)
 
     ui_state("idle")
     ui_message("nebell", SAUDACAO)
@@ -9722,39 +9791,46 @@ def encerrar(threads=()):
 
 
 def main():
-    global voice, VOICE_MODEL
+    global voice, VOICE_MODEL, kokoro_voz
 
-    if PiperVoice is None:
-        print("Piper não instalado (pip install piper-tts).")
-        return
+    # Primeiro a voz neural (Kokoro): mais natural e roda na CPU. Se não
+    # der (biblioteca ou modelo faltando), cai no Piper sem reclamar.
+    kokoro_voz = preparar_kokoro()
 
-    if not VOICE_MODEL.exists():
-        # Sem voz nenhuma nao da para comecar, entao baixa agora mesmo
-        # em vez de desistir.
-        if AUTO_DOWNLOAD_VOICE and nebell_voz is not None:
-            print(f"Não há nenhuma voz em {VOICES_DIR}. Vou baixar a minha.")
-            deu_certo, mensagem = nebell_voz.instalar(VOICES_DIR, log=print)
-            print(f"[Voz] {mensagem}")
-
-            if deu_certo:
-                VOICE_MODEL = descobrir_voz()
-
-        if not VOICE_MODEL.exists():
-            print(f"\nNão encontrei nenhuma voz em {VOICES_DIR}")
-            print("Para instalar a voz à mão, rode:")
-            print("    python baixar_voz.py")
-            print("ou dê dois cliques em Baixar_Voz.bat")
-            input("\nPressione Enter para sair.")
+    if kokoro_voz is not None:
+        print(f"Voz: {VOZ_ROTULO}.")
+    else:
+        if PiperVoice is None:
+            print("Piper não instalado (pip install piper-tts).")
             return
 
-    print(f"Carregando a voz {VOICE_MODEL.parent.name}...")
+        if not VOICE_MODEL.exists():
+            # Sem voz nenhuma nao da para comecar, entao baixa agora mesmo
+            # em vez de desistir.
+            if AUTO_DOWNLOAD_VOICE and nebell_voz is not None:
+                print(f"Não há nenhuma voz em {VOICES_DIR}. Vou baixar a minha.")
+                deu_certo, mensagem = nebell_voz.instalar(VOICES_DIR, log=print)
+                print(f"[Voz] {mensagem}")
 
-    try:
-        carregar_voz(VOICE_MODEL)
-    except Exception as exc:
-        print(f"Erro ao carregar o Piper: {exc}")
-        input("Pressione Enter para sair.")
-        return
+                if deu_certo:
+                    VOICE_MODEL = descobrir_voz()
+
+            if not VOICE_MODEL.exists():
+                print(f"\nNão encontrei nenhuma voz em {VOICES_DIR}")
+                print("Para instalar a voz à mão, rode:")
+                print("    python baixar_voz.py")
+                print("ou dê dois cliques em Baixar_Voz.bat")
+                input("\nPressione Enter para sair.")
+                return
+
+        print(f"Carregando a voz {VOICE_MODEL.parent.name}...")
+
+        try:
+            carregar_voz(VOICE_MODEL)
+        except Exception as exc:
+            print(f"Erro ao carregar o Piper: {exc}")
+            input("Pressione Enter para sair.")
+            return
 
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
 

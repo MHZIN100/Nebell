@@ -50,6 +50,7 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 # sem aquele recurso.
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
+    ("voz neural (Kokoro)", ["kokoro-onnx"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
     ("escuta na placa de vídeo", ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]),
     ("áudio do microfone", ["pyaudio"]),
@@ -61,7 +62,8 @@ BLOCOS = [
 
 # modulo -> para que serve. Usado no relatorio do fim.
 CONFERIR = [
-    ("piper", "voz"),
+    ("piper", "voz (reserva)"),
+    ("kokoro_onnx", "voz neural (Kokoro)"),
     ("requests", "internet"),
     ("faster_whisper", "escuta por voz"),
     ("speech_recognition", "microfone"),
@@ -529,6 +531,48 @@ def baixar_voz(vpy):
     return False
 
 
+def baixar_voz_kokoro(vpy):
+    """
+    Baixa o modelo da voz neural (Kokoro), ~350 MB, só na primeira vez.
+
+    Opcional de propósito: se não entrar (pacote ou download), a NEBELL
+    fala com o Piper. Reaproveita o download com retomada do
+    nebell_kokoro, então uma queda no meio continua de onde parou.
+    """
+    passo("Voz neural (Kokoro) — ~350 MB, só uma vez")
+
+    modelo = AQUI / "voices" / "kokoro" / "kokoro-v1.0.onnx"
+
+    if modelo.is_file() and modelo.stat().st_size > 200_000_000:
+        print("   já está aqui.")
+        anotar(True, "voz neural (Kokoro)")
+        return True
+
+    codigo = (
+        "import sys\n"
+        "sys.path.insert(0, r%r)\n"
+        "try:\n"
+        "    import nebell_kokoro as K\n"
+        "except Exception as e:\n"
+        "    print('   kokoro-onnx ainda não disponível:', e)\n"
+        "    sys.exit(1)\n"
+        "ok, msg = K.instalar(r%r)\n"
+        "print('  ', msg)\n"
+        "sys.exit(0 if ok else 1)\n"
+    ) % (str(AQUI), str(AQUI / "voices"))
+
+    ok, _ = roda([str(vpy), "-c", codigo], mostrar=True, tempo=3600)
+
+    if ok and modelo.is_file():
+        anotar(True, "voz neural (Kokoro)")
+        return True
+
+    print("   não deu agora; a NEBELL vai falar com o Piper. "
+          "Rodar o Instalar.bat de novo tenta outra vez.")
+    anotar(False, "voz neural (Kokoro) — opcional, caiu no Piper")
+    return False
+
+
 def instalar_tesseract(pular):
     """
     OCR: so serve para ela LER A SUA TELA. Tudo o mais funciona sem.
@@ -716,6 +760,7 @@ def main():
             anotar(False, f"modelo {MODELO} — pulado, falta o Ollama")
 
         baixar_voz(vpy)
+        baixar_voz_kokoro(vpy)
         instalar_tesseract(sem_tesseract)
         presentes = conferir(vpy)
 

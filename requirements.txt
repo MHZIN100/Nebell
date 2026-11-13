@@ -8,6 +8,11 @@
 piper-tts
 requests
 
+# voz neural (Kokoro): a voz principal, muito mais natural que o Piper.
+# Puxa onnxruntime, numpy, phonemizer e espeakng-loader sozinho. O Piper
+# acima fica de reserva. O modelo (~350 MB) e baixado pelo instalador.
+kokoro-onnx
+
 # escuta por voz
 faster-whisper
 SpeechRecognition

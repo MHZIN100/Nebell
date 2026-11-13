@@ -21,10 +21,11 @@ Baixe este repositório e **dê dois cliques em `Instalar.bat`**.
 - baixa e instala o **Ollama** (que normalmente é um download manual à
   parte);
 - baixa o modelo **qwen3.5:4b**;
-- baixa a **voz** do Piper;
+- baixa a **voz neural** (Kokoro — feminina, pt-BR, muito mais natural
+  que o Piper), com o Piper de reserva;
 - instala o **Tesseract**, para ela ler a tela (opcional).
 
-Da primeira vez leva um tempo e baixa uns 4 GB. Pode rodar de novo
+Da primeira vez leva um tempo e baixa uns 4,5 GB. Pode rodar de novo
 quando quiser: ele pula o que já está pronto.
 
 No fim ele mostra um resumo do que ficou pronto e do que faltou — e
@@ -69,7 +70,7 @@ isso.
 
 | | |
 |---|---|
-| **Fala e ouve** | Piper para a voz, faster-whisper para a escuta, tudo offline |
+| **Fala e ouve** | Kokoro (voz neural, pt-BR) para falar, faster-whisper para a escuta, tudo offline; Piper de reserva |
 | **Pensa** | Ollama com qwen3.5:4b, local |
 | **Enxerga** | lê a sua tela, lê e edita imagens (OCR com Tesseract) |
 | **Mexe no PC** | abre programas, controla janelas, digita, busca e edita arquivos |
@@ -132,7 +133,7 @@ para não pesar em jogo.
 | | Por quê |
 |---|---|
 | `.venv` | guarda o caminho do Python que o criou; não roda em outra máquina. O `Instalar.bat` cria um novo. |
-| `voices/` | 63 MB por voz. O instalador baixa. |
+| `voices/` | a voz neural do Kokoro (~350 MB) e a do Piper. O instalador baixa. |
 | `whisper_models/` | meio giga. Baixa sozinho na primeira fala. |
 | `memoria.db` | **são as suas conversas.** Fica só na sua máquina. |
 | `microfone.json` | é o número do microfone *daquela* máquina. |
