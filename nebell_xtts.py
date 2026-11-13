@@ -29,6 +29,13 @@ from pathlib import Path
 # faria uma pergunta no terminal e travaria o NEBELL esperando resposta.
 os.environ.setdefault("COQUI_TOS_AGREED", "1")
 
+# No Windows, o PyTorch e a janela (WebView2) carregam cada um a sua copia
+# do OpenMP (libiomp5md.dll). As duas juntas abortam o processo sem erro
+# nenhum no Python -- o NEBELL morria exatamente ao "Abrindo a interface".
+# Esta variavel manda o OpenMP tolerar a copia duplicada. Precisa estar
+# definida ANTES de o torch carregar, por isso fica aqui no topo.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 try:
     import numpy as np
 except Exception:
