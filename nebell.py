@@ -416,6 +416,36 @@ PERFIS = {
 
 PERFIL_PADRAO = "equilibrado"
 
+# ---- nível de esforço do modelo ---------------------------
+# O botão ESFORÇO na janela troca entre três níveis. É o único lugar
+# que decide se o modelo "pensa" antes de responder (o `think` do
+# Ollama) e quanto espaço ele tem para a resposta do dia a dia.
+#
+#   rapido  think desligado, resposta curta: começa a sair na hora
+#   normal  think desligado, tamanho padrão (o comportamento de antes)
+#   alto    think ligado — ele raciocina antes de falar. Melhor em
+#           conta, código e lógica; em troca demora mais para a
+#           primeira palavra.
+#
+# O raciocínio (<think>...</think>) nunca é falado nem mostrado: o
+# ThinkFilter já corta. Só muda a qualidade da resposta final.
+#
+# Um pedido de código/documento/explicação ganha espaço de qualquer
+# jeito (opcoes_do_pedido), então o teto do "rapido" não atrapalha
+# justamente quem precisa de resposta longa.
+NIVEIS_DE_ESFORCO = ("rapido", "normal", "alto")
+
+ESFORCO_PADRAO = "normal"
+
+ESFORCO_THINK = {"rapido": False, "normal": False, "alto": True}
+
+# Teto de tokens por nível para conversa comum. None = usa o do perfil.
+ESFORCO_TETO = {"rapido": 160, "normal": None, "alto": None}
+
+# Lista de um item só para dar para trocar de dentro do handler da
+# janela sem `global` espalhado pelo arquivo.
+esforco_atual = [ESFORCO_PADRAO]
+
 # ---- modo desenvolvedor -----------------------------------
 # Ligado, ele mostra o que esta acontecendo por baixo: qual ferramenta
 # chamou, com quais argumentos, quanto tempo levou cada etapa e o que
@@ -8369,6 +8399,14 @@ def opcoes_do_pedido(texto=""):
         opcoes["num_predict"] = max(
             opcoes.get("num_predict", 0), MAX_REPLY_TOKENS_LONGO
         )
+    else:
+        # No esforço "rápido" a conversa do dia a dia sai curta e começa
+        # na hora. Pedido de código/documento caiu no ramo de cima e não
+        # chega aqui, então o teto não corta quem pediu mais.
+        teto = ESFORCO_TETO.get(esforco_atual[0])
+
+        if teto:
+            opcoes["num_predict"] = min(opcoes.get("num_predict", teto), teto)
 
     return opcoes
 
@@ -8381,7 +8419,9 @@ def run_model_round(allow_tools, opcoes=None):
         "model": MODEL_NAME,
         "messages": history,
         "stream": True,
-        "think": False,
+        # O esforço "alto" liga o raciocínio antes da resposta; os
+        # outros dois mantêm a resposta direta de sempre.
+        "think": ESFORCO_THINK.get(esforco_atual[0], False),
         "keep_alive": KEEP_ALIVE,
         "options": opcoes or MODEL_OPTIONS,
     }
@@ -9005,12 +9045,38 @@ def hud_stop():
         ui_state("idle")
 
 
+def hud_set_esforco(nivel):
+    """O botão ESFORÇO da janela: rapido / normal / alto."""
+    nivel = (nivel or "").strip().lower()
+
+    if nivel not in NIVEIS_DE_ESFORCO:
+        return
+
+    esforco_atual[0] = nivel
+
+    recado = {
+        "rapido": "Esforço no rápido: respostas curtas e diretas.",
+        "normal": "Esforço no normal.",
+        "alto": "Esforço no alto: vou pensar antes de responder. Demora um "
+                "pouco mais para a primeira palavra, mas sai melhor em conta, "
+                "código e lógica.",
+    }[nivel]
+
+    if hud is not None:
+        hud.set_esforco_nivel(nivel)
+
+    ui_message("nebell", recado)
+    print(f"\n[Esforço] {nivel}")
+
+
 def hud_ready():
     """A pagina abriu: manda o estado inicial de uma vez."""
     atualizar_estatisticas(uma_vez=True)
 
     if mic_manager is not None:
         on_microphone_change(mic_manager)
+
+    hud.set_esforco_nivel(esforco_atual[0])
 
     ui_state("idle")
     ui_message("nebell", SAUDACAO)
@@ -9272,6 +9338,7 @@ def run_hud_mode():
     hud.on_files = hud_files
     hud.on_set_mic = hud_set_mic
     hud.on_stop = hud_stop
+    hud.on_set_esforco = hud_set_esforco
     hud.on_ready = hud_ready
 
     if not hud.create():

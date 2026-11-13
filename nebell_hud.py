@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 6
+HUD_VERSAO = 7
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -66,6 +66,7 @@ class HudBridge:
         self.on_stop = None
         self.on_ready = None
         self.on_files = None
+        self.on_set_esforco = None
 
         self._pending = []
         self._lock = threading.Lock()
@@ -95,6 +96,18 @@ class HudBridge:
             if bridge.on_set_mic:
                 threading.Thread(
                     target=bridge.on_set_mic, args=(str(spec),), daemon=True
+                ).start()
+
+            return True
+
+        def set_esforco(self, nivel):
+            """O botao ESFORCO da pagina: rapido / normal / alto."""
+            bridge = self._bridge
+
+            if bridge.on_set_esforco:
+                threading.Thread(
+                    target=bridge.on_set_esforco, args=(str(nivel),),
+                    daemon=True,
                 ).start()
 
             return True
@@ -200,8 +213,7 @@ class HudBridge:
 
         self.ensure_html()
 
-        self.window = webview.create_window(
-            WINDOW_TITLE,
+        comum = dict(
             url=self.html_path.resolve().as_uri(),
             js_api=self.Api(self),
             width=WINDOW_WIDTH,
@@ -209,6 +221,21 @@ class HudBridge:
             background_color=BACKGROUND,
             text_select=True,
         )
+
+        # Abre ocupando a tela inteira (maximizada): a janela ainda tem
+        # barra de título, então dá para mover, minimizar e fechar, e a
+        # barra de tarefas continua à vista. O width/height acima é o
+        # tamanho que ela volta a ter quando a pessoa desmaximiza.
+        #
+        # 'maximized' só existe no pywebview recente; num mais antigo o
+        # create_window recusa o parâmetro e aí abrimos no tamanho normal.
+        try:
+            self.window = webview.create_window(
+                WINDOW_TITLE, maximized=True, **comum
+            )
+        except TypeError:
+            self.window = webview.create_window(WINDOW_TITLE, **comum)
+
         self.active = True
         return True
 
@@ -360,6 +387,10 @@ class HudBridge:
         """0 = folgada, 1 = penando. A nuvem ferve conforme sobe."""
         self.call("setEsforco", float(valor))
 
+    def set_esforco_nivel(self, nivel):
+        """O rótulo do botão ESFORÇO (rapido / normal / alto)."""
+        self.call("setEsforcoNivel", str(nivel))
+
     def stream_message(self, texto):
         """
         Mostra o texto que esta sendo gerado, na hora.
@@ -427,7 +458,7 @@ body[data-state="alerta"]{--acc:#ff305c;--line:rgba(255,48,92,.42)}
 header{display:flex;justify-content:space-between;align-items:center;font-family:Orbitron,sans-serif;letter-spacing:.3em}
 header h1{margin:0;font-size:20px;font-weight:700;color:var(--acc);text-shadow:0 0 14px var(--acc)}
 .clock{text-align:right;font-size:12px;color:var(--dim);letter-spacing:.15em}.clock b{display:block;font-size:18px;color:var(--text);font-weight:500}
-main{display:grid;grid-template-columns:250px 1fr 310px;gap:16px;min-height:0}
+main{display:grid;grid-template-columns:230px minmax(300px,1fr) minmax(400px,30%);gap:16px;min-height:0}
 .panel{position:relative;background:var(--panel);border:1px solid var(--line);padding:14px;backdrop-filter:blur(4px);min-height:0;display:flex;flex-direction:column}
 .panel::before,.panel::after{content:"";position:absolute;width:14px;height:14px;border:2px solid var(--acc)}
 .panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
@@ -441,8 +472,8 @@ main{display:grid;grid-template-columns:250px 1fr 310px;gap:16px;min-height:0}
 #hud{width:100%;flex:1;min-height:0}
 #state{font:700 15px Orbitron,sans-serif;letter-spacing:.45em;color:var(--acc);text-shadow:0 0 12px var(--acc);margin:4px 0 2px}
 #sub{color:var(--dim);font-size:12px;letter-spacing:.2em}
-#log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;font-size:13px;padding-right:4px}
-.msg{border-left:2px solid var(--line);padding-left:10px}.msg small{display:block;color:var(--dim);font-size:10px;letter-spacing:.2em}
+#log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:15px;line-height:1.55;padding-right:6px}
+.msg{border-left:2px solid var(--line);padding-left:12px}.msg small{display:block;margin-bottom:3px;color:var(--dim);font-size:10px;letter-spacing:.2em}
 .msg.nebell{border-color:var(--acc)}.msg.nebell small{color:var(--acc)}
 /* Bolha ainda sendo escrita: cursor piscando no fim do texto. */
 .msg.streaming>div:last-child::after{content:"\u258a";color:var(--acc);animation:pisca 1s steps(2) infinite}
@@ -460,6 +491,12 @@ button:hover{background:rgba(150,60,245,.2)}
 #file{border-color:rgba(150,60,245,.5)}
 #file:hover{background:rgba(150,60,245,.2)}
 #file:disabled{opacity:.5;cursor:default}
+/* Botao ESFORCO: a cor muda com o nivel. Rapido azul, normal roxo,
+   alto rosa -- o mesmo rosa do estado "pensando". */
+#effort{border-color:rgba(150,60,245,.5)}
+#effort:hover{background:rgba(150,60,245,.2)}
+#effort[data-nivel="rapido"]{border-color:#4a86ff;color:#cfe0ff}
+#effort[data-nivel="alto"]{border-color:#ff4d7a;color:#ffd0dc}
 #halt{border-color:rgba(255,120,120,.5);color:#ff9b9b}
 #halt:hover{background:rgba(255,120,120,.15)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
@@ -491,6 +528,7 @@ select:focus{border-color:var(--acc)}
   <div class="in"><span>&gt;</span><input id="txt" placeholder="Digite uma mensagem e pressione Enter" autocomplete="off"></div>
   <select id="mic" title="Microfone de entrada"><option value="auto">MICROFONE: AUTOMÁTICO</option></select>
   <button id="file" title="Enviar um arquivo ou imagem para o NEBELL">ARQUIVO</button>
+  <button id="effort" title="Nível de esforço do modelo. No ALTO ele raciocina antes de responder: mais lento para a primeira palavra, melhor em conta, código e lógica.">ESFORÇO: NORMAL</button>
   <button id="halt" title="Interrompe a fala e a geração">PARAR</button>
  </footer>
 </div>
@@ -1571,6 +1609,7 @@ const api={
    $('#state').textContent=n.rotulo;$('#sub').textContent=n.diz;
    document.body.dataset.state=FAMILIA[n.estado]||'trabalhando'}},
  setEsforco:v=>nucleo.setEsforco(v),
+ setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>nucleo.setLevel(v),
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
  onSubmit:null,setDemo:v=>{demo=!!v}};
@@ -1613,6 +1652,22 @@ $('#file').addEventListener('click',async()=>{
   }
  }catch(e){addMessage('nebell','Não consegui abrir o seletor: '+e)}
  finally{bt.disabled=false;bt.textContent='ARQUIVO'}});
+// Botao ESFORCO: rapido -> normal -> alto -> rapido. Este e o unico
+// lugar que liga o "pensar antes de responder" do modelo (nivel alto).
+const NIVEIS_ESFORCO=['rapido','normal','alto'];
+const ROTULO_ESFORCO={rapido:'ESFORÇO: RÁPIDO',normal:'ESFORÇO: NORMAL',alto:'ESFORÇO: ALTO'};
+let nivelEsforco='normal';
+function pintarEsforco(){const bt=$('#effort');if(!bt)return;
+ bt.textContent=ROTULO_ESFORCO[nivelEsforco]||('ESFORÇO: '+nivelEsforco.toUpperCase());
+ bt.dataset.nivel=nivelEsforco}
+function aplicarEsforco(nivel,avisarPython){
+ if(NIVEIS_ESFORCO.indexOf(nivel)<0)return;
+ nivelEsforco=nivel;pintarEsforco();
+ if(avisarPython){const b=bridge();if(b&&b.set_esforco)b.set_esforco(nivel)}}
+$('#effort').addEventListener('click',()=>{
+ const i=NIVEIS_ESFORCO.indexOf(nivelEsforco);
+ aplicarEsforco(NIVEIS_ESFORCO[(i+1)%NIVEIS_ESFORCO.length],true)});
+pintarEsforco();
 // Esc também interrompe
 addEventListener('keydown',e=>{if(e.key==='Escape'){const b=bridge();if(b&&b.stop)b.stop()}});
 
