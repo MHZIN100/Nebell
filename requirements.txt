@@ -16,6 +16,7 @@ requests
 torch
 torchaudio
 torchcodec
+six
 coqui-tts
 
 # voz neural (Kokoro): reserva leve do XTTS, roda na CPU em onnxruntime.
