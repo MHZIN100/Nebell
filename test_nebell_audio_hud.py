@@ -1157,7 +1157,10 @@ class TestBotaoNaPagina(HudTest):
     def test_a_pagina_tem_o_botao(self):
         html = H.HUD_HTML
         self.assertIn('id="file"', html)
-        self.assertIn("ARQUIVO", html)
+        # O rodapé é minimalista: o botão é só um ícone, e o que ele faz
+        # fica no tooltip (title). O rótulo de texto saiu.
+        self.assertIn("iconbtn", html)
+        self.assertIn("arquivo", html.lower())
 
     def test_o_botao_chama_o_seletor_nativo(self):
         self.assertIn("pick_files", H.HUD_HTML)

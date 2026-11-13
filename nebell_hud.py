@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 8
+HUD_VERSAO = 9
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -491,6 +491,18 @@ footer{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 input{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;padding:13px 0}
 button{background:var(--panel);color:var(--acc);border:1px solid var(--line);font:500 11px Orbitron,sans-serif;letter-spacing:.15em;padding:12px 14px;cursor:pointer}
 button:hover{background:rgba(150,60,245,.2)}
+/* Rodapé minimalista: cada controle é só um ícone de 46px, quadrado,
+   que combina com a altura da caixa de texto. O significado fica no
+   tooltip (title) ao passar o mouse. */
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;min-width:46px;padding:0;background:var(--panel);color:var(--acc);border:1px solid var(--line);cursor:pointer;transition:background .15s,border-color .15s}
+.iconbtn:hover{background:rgba(150,60,245,.2)}
+.iconbtn svg{width:20px;height:20px;display:block;pointer-events:none}
+.iconbtn:disabled{opacity:.45;cursor:default}
+/* O seletor de microfone é o <select> nativo deitado por cima do
+   ícone, invisível: o clique abre a lista do sistema de sempre, mas o
+   que se vê é só o ícone. */
+#micbtn{position:relative;overflow:hidden}
+#micbtn select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;max-width:none;cursor:pointer}
 #file{border-color:rgba(150,60,245,.5)}
 #file:hover{background:rgba(150,60,245,.2)}
 #file:disabled{opacity:.5;cursor:default}
@@ -529,10 +541,19 @@ select:focus{border-color:var(--acc)}
  </main>
  <footer>
   <div class="in"><span>&gt;</span><input id="txt" placeholder="Digite uma mensagem e pressione Enter" autocomplete="off"></div>
-  <select id="mic" title="Microfone de entrada"><option value="auto">MICROFONE: AUTOMÁTICO</option></select>
-  <button id="file" title="Enviar um arquivo ou imagem para o NEBELL">ARQUIVO</button>
-  <button id="effort" title="Nível de esforço do modelo. No ALTO ele raciocina antes de responder: mais lento para a primeira palavra, melhor em conta, código e lógica.">ESFORÇO: NORMAL</button>
-  <button id="halt" title="Interrompe a fala e a geração">PARAR</button>
+  <label id="micbtn" class="iconbtn" title="Microfone de entrada">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg>
+   <select id="mic"><option value="auto">MICROFONE: AUTOMÁTICO</option></select>
+  </label>
+  <button id="file" class="iconbtn" title="Enviar um arquivo ou imagem para o NEBELL">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+  </button>
+  <button id="effort" class="iconbtn" title="Nível de esforço do modelo. No alto ele raciocina antes de responder.">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><line x1="12" y1="15" x2="16" y2="9.8"/><circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button id="halt" class="iconbtn" title="Interrompe a fala e a geração">
+   <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+  </button>
  </footer>
 </div>
 <script>
@@ -1597,7 +1618,11 @@ function setMics(list,current){const sel=$('#mic');if(!Array.isArray(list))retur
  sel.textContent='';const auto=document.createElement('option');auto.value='auto';auto.textContent='MICROFONE: AUTOMÁTICO';sel.append(auto);
  for(const d of list){const o=document.createElement('option');o.value=String(d.index);
   o.textContent=(d.is_headset?'FONE · ':'')+(d.name||('entrada '+d.index));sel.append(o)}
- if(current!=null)sel.value=String(current)}
+ if(current!=null)sel.value=String(current);atualizarTituloMic()}
+// Sem rotulo visivel, o nome do microfone vive no tooltip do icone.
+function atualizarTituloMic(){const sel=$('#mic'),btn=$('#micbtn');if(!sel||!btn)return;
+ const op=sel.options[sel.selectedIndex];const t=op?op.textContent:'';
+ btn.title=t?('Microfone: '+t):'Microfone de entrada'}
 function submit(text){text=text.trim();if(!text)return;addMessage('user',text);
  const b=bridge();
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
@@ -1637,7 +1662,7 @@ setInterval(()=>{if(fake)_s({cpu:15+Math.random()*40,ram:45+Math.random()*10,gpu
 
 // controles
 $('#txt').addEventListener('keydown',e=>{if(e.key==='Enter'){submit(e.target.value);e.target.value=''}});
-$('#mic').addEventListener('change',e=>{const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
+$('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
 $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()});
 // O seletor e o NATIVO, do lado do Python: o <input type=file> do HTML
 // nao entrega o caminho no disco, e sem caminho o NEBELL nao consegue
@@ -1645,7 +1670,7 @@ $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()}
 $('#file').addEventListener('click',async()=>{
  const b=bridge(),bt=$('#file');
  if(!b||!b.pick_files){addMessage('nebell','O seletor de arquivos só funciona na janela do NEBELL, senhor.');return}
- bt.disabled=true;bt.textContent='ABRINDO...';
+ bt.disabled=true;
  try{
   const caminhos=await b.pick_files();
   if(caminhos&&caminhos.length){
@@ -1654,15 +1679,18 @@ $('#file').addEventListener('click',async()=>{
    setState('pensando');
   }
  }catch(e){addMessage('nebell','Não consegui abrir o seletor: '+e)}
- finally{bt.disabled=false;bt.textContent='ARQUIVO'}});
+ finally{bt.disabled=false}});
 // Botao ESFORCO: rapido -> normal -> alto -> rapido. Este e o unico
 // lugar que liga o "pensar antes de responder" do modelo (nivel alto).
 const NIVEIS_ESFORCO=['rapido','normal','alto'];
-const ROTULO_ESFORCO={rapido:'ESFORÇO: RÁPIDO',normal:'ESFORÇO: NORMAL',alto:'ESFORÇO: ALTO'};
+const ROTULO_ESFORCO={rapido:'rápido',normal:'normal',alto:'alto'};
 let nivelEsforco='normal';
+// Minimalista: o botao e so o icone. A cor (data-nivel) mostra o nivel,
+// e o tooltip diz qual e. Nao mexe no conteudo, senao apaga o SVG.
 function pintarEsforco(){const bt=$('#effort');if(!bt)return;
- bt.textContent=ROTULO_ESFORCO[nivelEsforco]||('ESFORÇO: '+nivelEsforco.toUpperCase());
- bt.dataset.nivel=nivelEsforco}
+ bt.dataset.nivel=nivelEsforco;
+ bt.title='Esforço: '+(ROTULO_ESFORCO[nivelEsforco]||nivelEsforco)
+  +' — no alto ele raciocina antes de responder'}
 function aplicarEsforco(nivel,avisarPython){
  if(NIVEIS_ESFORCO.indexOf(nivel)<0)return;
  nivelEsforco=nivel;pintarEsforco();
