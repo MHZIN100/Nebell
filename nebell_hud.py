@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 7
+HUD_VERSAO = 8
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -458,7 +458,7 @@ body[data-state="alerta"]{--acc:#ff305c;--line:rgba(255,48,92,.42)}
 header{display:flex;justify-content:space-between;align-items:center;font-family:Orbitron,sans-serif;letter-spacing:.3em}
 header h1{margin:0;font-size:20px;font-weight:700;color:var(--acc);text-shadow:0 0 14px var(--acc)}
 .clock{text-align:right;font-size:12px;color:var(--dim);letter-spacing:.15em}.clock b{display:block;font-size:18px;color:var(--text);font-weight:500}
-main{display:grid;grid-template-columns:230px minmax(300px,1fr) minmax(400px,30%);gap:16px;min-height:0}
+main{display:grid;grid-template-columns:230px 1fr 320px;gap:16px;min-height:0}
 .panel{position:relative;background:var(--panel);border:1px solid var(--line);padding:14px;backdrop-filter:blur(4px);min-height:0;display:flex;flex-direction:column}
 .panel::before,.panel::after{content:"";position:absolute;width:14px;height:14px;border:2px solid var(--acc)}
 .panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
@@ -468,10 +468,13 @@ main{display:grid;grid-template-columns:230px minmax(300px,1fr) minmax(400px,30%
 .bar{height:6px;margin-top:5px;background:rgba(150,60,245,.14);position:relative}
 .bar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--acc);box-shadow:0 0 10px var(--acc);transition:width .8s}
 #gpu{background:linear-gradient(90deg,#286eff,#963cf5,#ff305c)}
-.center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
-#hud{width:100%;flex:1;min-height:0}
-#state{font:700 15px Orbitron,sans-serif;letter-spacing:.45em;color:var(--acc);text-shadow:0 0 12px var(--acc);margin:4px 0 2px}
-#sub{color:var(--dim);font-size:12px;letter-spacing:.2em}
+/* A nuvem de partículas vive reduzida no canto superior direito; a
+   conversa tomou o meio. A hudbox não estica: o canvas tem tamanho fixo
+   e fica grudado no topo da coluna da direita, com o estado embaixo. */
+.hudbox{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:0}
+#hud{width:100%;aspect-ratio:1;max-height:300px;flex:none;min-height:0}
+#state{font:700 14px Orbitron,sans-serif;letter-spacing:.3em;color:var(--acc);text-shadow:0 0 12px var(--acc);margin:6px 0 2px;text-align:center}
+#sub{color:var(--dim);font-size:11px;letter-spacing:.18em;text-align:center}
 #log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:15px;line-height:1.55;padding-right:6px}
 .msg{border-left:2px solid var(--line);padding-left:12px}.msg small{display:block;margin-bottom:3px;color:var(--dim);font-size:10px;letter-spacing:.2em}
 .msg.nebell{border-color:var(--acc)}.msg.nebell small{color:var(--acc)}
@@ -479,7 +482,7 @@ main{display:grid;grid-template-columns:230px minmax(300px,1fr) minmax(400px,30%
 .msg.streaming>div:last-child::after{content:"\u258a";color:var(--acc);animation:pisca 1s steps(2) infinite}
 @keyframes pisca{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.msg.streaming>div:last-child::after{animation:none}}
-/* Linha de "trabalhando nisso", abaixo do estado no centro. */
+/* Linha de "trabalhando nisso", abaixo do estado no canto da nuvem. */
 #work{margin-top:8px;color:var(--warn,#ffb020);font-size:12px;letter-spacing:.12em;min-height:16px;opacity:0;transition:opacity .2s}
 #work.on{opacity:1}
 footer{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -502,7 +505,7 @@ button:hover{background:rgba(150,60,245,.2)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
 select:focus{border-color:var(--acc)}
 #demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
-@media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.center{order:-1}#hud{flex:none;aspect-ratio:1;max-height:70vh}.panel{min-height:200px}#log{max-height:260px}footer{flex-wrap:wrap}}
+@media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -521,8 +524,8 @@ select:focus{border-color:var(--acc)}
    <div class="stat"><div><span>MICROFONE</span><span id="micV">--</span></div></div>
    <div class="stat"><div><span>LOCAL</span><span id="loc">--</span></div></div>
   </section>
-  <section class="center"><canvas id="hud"></canvas><div id="state">EM ESPERA</div><div id="sub">DIGA "NEBELL" PARA COMEÇAR</div><div id="work"></div></section>
-  <section class="panel"><h2>REGISTRO</h2><div id="log"></div></section>
+  <section class="panel conversa"><h2>CONVERSA</h2><div id="log"></div></section>
+  <aside class="hudbox"><canvas id="hud"></canvas><div id="state">EM ESPERA</div><div id="sub">DIGA "NEBELL" PARA COMEÇAR</div><div id="work"></div></aside>
  </main>
  <footer>
   <div class="in"><span>&gt;</span><input id="txt" placeholder="Digite uma mensagem e pressione Enter" autocomplete="off"></div>
