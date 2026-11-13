@@ -87,6 +87,11 @@ except Exception:
     nebell_kokoro = None
 
 try:
+    import nebell_xtts
+except Exception:
+    nebell_xtts = None
+
+try:
     import nebell_web
 except Exception:
     nebell_web = None
@@ -171,13 +176,22 @@ VOICE_PREFERENCE = ("nebell", "dii", "miro", "cadu", "faber")
 AUTO_DOWNLOAD_VOICE = True
 
 # ---- motor de voz -----------------------------------------
-# "kokoro" é uma voz neural muito mais natural que o Piper e, mesmo
-# assim, leve: roda na CPU, em onnxruntime (o mesmo motor que o NEBELL
-# já usa), sem disputar a placa de vídeo com o Ollama. Se o kokoro-onnx
-# ou o modelo não estiverem na máquina, o NEBELL cai no Piper sozinho —
-# a voz nunca fica muda.
-USAR_KOKORO = True
+# A voz tem três camadas, da mais natural para a mais garantida. O NEBELL
+# tenta de cima para baixo e usa a primeira que carregar — a voz nunca
+# fica muda.
+#
+#   1. XTTS   — voz neural mais humana, 100% offline. Pesada (PyTorch +
+#               modelo de ~1.8 GB): carrega devagar e fala com alguns
+#               segundos de atraso, ainda mais em CPU. Precisa ter sido
+#               preparada pelo instalador.
+#   2. Kokoro — voz neural leve (roda na CPU, em onnxruntime). Bem mais
+#               natural que o Piper e rápida. Reserva do XTTS.
+#   3. Piper  — a antiga, a mais garantida de todas. Última reserva.
+USAR_XTTS = True
+XTTS_FALANTE = "Ana Florence"   # voz embutida, feminina. Veja FALANTES_FEM.
+XTTS_GPU = False                # CPU de propósito: a placa é do Ollama.
 
+USAR_KOKORO = True
 # Voz do Kokoro. pf_dora é feminina (pt-BR). Masculinas: pm_alex, pm_santa.
 KOKORO_VOZ = "pf_dora"
 KOKORO_VELOCIDADE = 1.0
@@ -637,7 +651,7 @@ interaction_mode = "text"
 first_chunk_pending = True
 tools_supported = True
 voice = None
-kokoro_voz = None              # nebell_kokoro.VozKokoro quando o Kokoro está ativo
+voz_neural = None              # VozXtts ou VozKokoro quando um deles está ativo
 VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
 mic_manager = None          # nebell_audio.MicManager
 hud = None                  # nebell_hud.HudBridge
@@ -1079,9 +1093,9 @@ def synthesize_to_bytes(text):
     """Gera o WAV na memoria e devolve (bytes, duracao em segundos)."""
     # O lock evita sintetizar com o modelo sendo trocado no meio.
     with troca_de_voz:
-        # Voz neural (Kokoro) quando ativa; senão, Piper.
-        if kokoro_voz is not None:
-            return kokoro_voz.sintetizar(text)
+        # Voz neural (XTTS ou Kokoro) quando ativa; senão, Piper.
+        if voz_neural is not None:
+            return voz_neural.sintetizar(text)
 
         buffer = io.BytesIO()
 
@@ -1777,6 +1791,35 @@ def carregar_voz(caminho):
     return nova
 
 
+def preparar_xtts():
+    """
+    Deixa a voz XTTS pronta, se o instalador já a preparou.
+
+    Não baixa nada aqui de propósito: o download de ~1.8 GB é tarefa do
+    instalador. Em tempo de execução, só carrega quando a marca existe,
+    para nunca travar a abertura do NEBELL com um download gigante.
+
+    Devolve a VozXtts pronta, ou None — e aí cai no Kokoro. Nunca estoura.
+    """
+    global VOZ_ROTULO
+
+    if not (USAR_XTTS and nebell_xtts is not None
+            and nebell_xtts.disponivel(VOICES_DIR)):
+        return None
+
+    try:
+        print("Carregando a voz XTTS (pesada, pode demorar)...")
+        voz = nebell_xtts.VozXtts(
+            VOICES_DIR, falante=XTTS_FALANTE, usar_gpu=XTTS_GPU, log=print
+        )
+        VOZ_ROTULO = f"XTTS · {voz.falante}"
+        return voz
+
+    except Exception as exc:
+        print(f"[Voz] XTTS indisponível ({exc}). Vou tentar o Kokoro.")
+        return None
+
+
 def preparar_kokoro():
     """
     Deixa a voz neural (Kokoro) pronta, baixando o modelo se preciso.
@@ -1822,10 +1865,10 @@ def garantir_voz():
     Roda em segundo plano: se a internet estiver lenta, o NEBELL ja
     comeca a funcionar com a voz que houver.
     """
-    # Com o Kokoro ativo, não faz sentido baixar a voz do Piper em
+    # Com uma voz neural ativa, não faz sentido baixar a voz do Piper em
     # segundo plano: ela só serviria de reserva, e o download fica para
-    # quando (e se) o Kokoro faltar.
-    if kokoro_voz is not None:
+    # quando (e se) a voz neural faltar.
+    if voz_neural is not None:
         return
 
     if not (AUTO_DOWNLOAD_VOICE and nebell_voz is not None):
@@ -9791,13 +9834,13 @@ def encerrar(threads=()):
 
 
 def main():
-    global voice, VOICE_MODEL, kokoro_voz
+    global voice, VOICE_MODEL, voz_neural
 
-    # Primeiro a voz neural (Kokoro): mais natural e roda na CPU. Se não
-    # der (biblioteca ou modelo faltando), cai no Piper sem reclamar.
-    kokoro_voz = preparar_kokoro()
+    # Voz, da mais natural para a mais garantida: XTTS -> Kokoro -> Piper.
+    # Usa a primeira que carregar; se nenhuma neural der, cai no Piper.
+    voz_neural = preparar_xtts() or preparar_kokoro()
 
-    if kokoro_voz is not None:
+    if voz_neural is not None:
         print(f"Voz: {VOZ_ROTULO}.")
     else:
         if PiperVoice is None:

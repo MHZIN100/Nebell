@@ -50,6 +50,7 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 # sem aquele recurso.
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
+    ("voz XTTS (alta qualidade)", ["coqui-tts"]),
     ("voz neural (Kokoro)", ["kokoro-onnx"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
     ("escuta na placa de vídeo", ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]),
@@ -63,6 +64,7 @@ BLOCOS = [
 # modulo -> para que serve. Usado no relatorio do fim.
 CONFERIR = [
     ("piper", "voz (reserva)"),
+    ("TTS", "voz XTTS (alta qualidade)"),
     ("kokoro_onnx", "voz neural (Kokoro)"),
     ("requests", "internet"),
     ("faster_whisper", "escuta por voz"),
@@ -531,6 +533,46 @@ def baixar_voz(vpy):
     return False
 
 
+def baixar_voz_xtts(vpy):
+    """
+    Prepara a voz XTTS (alta qualidade): baixa o modelo (~1.8 GB), faz uma
+    síntese de teste e deixa a marca. Opcional, como o Tesseract: se não
+    entrar, a NEBELL usa o Kokoro. É o passo mais pesado do instalador.
+    """
+    passo("Voz XTTS (alta qualidade) — ~1.8 GB, pesada, só uma vez")
+
+    marca = AQUI / "voices" / "xtts" / ".xtts_pronto"
+
+    if marca.is_file():
+        print("   já está pronta.")
+        anotar(True, "voz XTTS (alta qualidade)")
+        return True
+
+    codigo = (
+        "import sys\n"
+        "sys.path.insert(0, r%r)\n"
+        "try:\n"
+        "    import nebell_xtts as X\n"
+        "except Exception as e:\n"
+        "    print('   coqui-tts ainda não disponível:', e)\n"
+        "    sys.exit(1)\n"
+        "ok, msg = X.instalar(r%r)\n"
+        "print('  ', msg)\n"
+        "sys.exit(0 if ok else 1)\n"
+    ) % (str(AQUI), str(AQUI / "voices"))
+
+    ok, _ = roda([str(vpy), "-c", codigo], mostrar=True, tempo=5400)
+
+    if ok and marca.is_file():
+        anotar(True, "voz XTTS (alta qualidade)")
+        return True
+
+    print("   não deu agora; a NEBELL vai usar o Kokoro. "
+          "Rodar o Instalar.bat de novo tenta outra vez.")
+    anotar(False, "voz XTTS (alta qualidade) — opcional, caiu no Kokoro")
+    return False
+
+
 def baixar_voz_kokoro(vpy):
     """
     Baixa o modelo da voz neural (Kokoro), ~350 MB, só na primeira vez.
@@ -761,6 +803,7 @@ def main():
 
         baixar_voz(vpy)
         baixar_voz_kokoro(vpy)
+        baixar_voz_xtts(vpy)
         instalar_tesseract(sem_tesseract)
         presentes = conferir(vpy)
 

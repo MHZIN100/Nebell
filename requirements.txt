@@ -8,9 +8,15 @@
 piper-tts
 requests
 
-# voz neural (Kokoro): a voz principal, muito mais natural que o Piper.
-# Puxa onnxruntime, numpy, phonemizer e espeakng-loader sozinho. O Piper
-# acima fica de reserva. O modelo (~350 MB) e baixado pelo instalador.
+# voz XTTS (alta qualidade): a voz mais natural, 100% offline, porem
+# pesada (puxa o PyTorch; modelo de ~1.8 GB). O instalador baixa o
+# modelo. Se nao instalar, o NEBELL usa o Kokoro abaixo.
+coqui-tts
+
+# voz neural (Kokoro): reserva leve do XTTS, roda na CPU em onnxruntime.
+# Muito mais natural que o Piper e rapida. Puxa onnxruntime, numpy,
+# phonemizer e espeakng-loader. O modelo (~350 MB) e baixado pelo
+# instalador. O Piper (acima) e a ultima reserva.
 kokoro-onnx
 
 # escuta por voz

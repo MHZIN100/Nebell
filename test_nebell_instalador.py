@@ -427,7 +427,7 @@ class TestPacotes(InstaladorTest):
             "piper": "piper-tts", "speech_recognition": "speechrecognition",
             "faster_whisper": "faster-whisper", "webview": "pywebview",
             "PIL": "pillow", "docx": "python-docx", "pptx": "python-pptx",
-            "kokoro_onnx": "kokoro-onnx",
+            "kokoro_onnx": "kokoro-onnx", "TTS": "coqui-tts",
         }
 
         for modulo, _ in I.CONFERIR:
@@ -475,6 +475,7 @@ class TestTudoJunto(InstaladorTest):
                 mock.patch.object(I, "baixar_modelo", return_value=True), \
                 mock.patch.object(I, "baixar_voz", side_effect=voz), \
                 mock.patch.object(I, "baixar_voz_kokoro", return_value=True), \
+                mock.patch.object(I, "baixar_voz_xtts", return_value=True), \
                 mock.patch.object(I, "instalar_tesseract", return_value=True), \
                 mock.patch.object(I, "conferir", return_value=set()), \
                 mock.patch.object(I, "PAUSA_ENTRE_PASSADAS", 0), \
@@ -505,6 +506,7 @@ class TestTudoJunto(InstaladorTest):
                 mock.patch.object(I, "baixar_modelo", return_value=True), \
                 mock.patch.object(I, "baixar_voz", side_effect=voz), \
                 mock.patch.object(I, "baixar_voz_kokoro", return_value=True), \
+                mock.patch.object(I, "baixar_voz_xtts", return_value=True), \
                 mock.patch.object(I, "instalar_tesseract", return_value=True), \
                 mock.patch.object(I, "conferir", return_value=set()), \
                 mock.patch.object(I, "PAUSA_ENTRE_PASSADAS", 0), \
@@ -549,6 +551,7 @@ class TestTudoJunto(InstaladorTest):
                 mock.patch.object(I, "baixar_modelo", return_value=True), \
                 mock.patch.object(I, "baixar_voz", return_value=True), \
                 mock.patch.object(I, "baixar_voz_kokoro", return_value=True), \
+                mock.patch.object(I, "baixar_voz_xtts", return_value=True), \
                 mock.patch.object(I, "conferir", return_value=set()), \
                 mock.patch.object(I, "instalar_tesseract") as tess, \
                 mock.patch.object(sys, "argv",
