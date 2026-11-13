@@ -11,9 +11,11 @@ requests
 # voz XTTS (alta qualidade): a voz mais natural, 100% offline, porem
 # pesada. O coqui-tts NAO puxa o PyTorch sozinho, entao o torch e o
 # torchaudio vem explicitos aqui (versao CPU; a placa fica com o Ollama).
-# Modelo de ~1.8 GB baixado pelo instalador. Se nao instalar, usa Kokoro.
+# O torchcodec e exigido pelo PyTorch 2.9+ para ler/gravar audio. Modelo
+# de ~1.8 GB baixado pelo instalador. Se nao instalar, o NEBELL usa Kokoro.
 torch
 torchaudio
+torchcodec
 coqui-tts
 
 # voz neural (Kokoro): reserva leve do XTTS, roda na CPU em onnxruntime.

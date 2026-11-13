@@ -50,7 +50,7 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 # sem aquele recurso.
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
-    ("voz XTTS (alta qualidade)", ["torch", "torchaudio", "coqui-tts"]),
+    ("voz XTTS (alta qualidade)", ["torch", "torchaudio", "torchcodec", "coqui-tts"]),
     ("voz neural (Kokoro)", ["kokoro-onnx"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
     ("escuta na placa de vídeo", ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]),
