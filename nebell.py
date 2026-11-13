@@ -187,7 +187,11 @@ AUTO_DOWNLOAD_VOICE = True
 #   2. Kokoro — voz neural leve (roda na CPU, em onnxruntime). Bem mais
 #               natural que o Piper e rápida. Reserva do XTTS.
 #   3. Piper  — a antiga, a mais garantida de todas. Última reserva.
-USAR_XTTS = True
+# DESLIGADO por padrão: no notebook de 8 GB de RAM do Neto o XTTS carrega,
+# mas o processo morre em pontos aleatórios na abertura — não cabe junto
+# com o Ollama, o Whisper e a janela. Em máquina com mais RAM (16 GB+),
+# é só pôr True de volta que ele volta a ser a voz principal.
+USAR_XTTS = False
 XTTS_FALANTE = "Ana Florence"   # voz embutida, feminina. Veja FALANTES_FEM.
 XTTS_GPU = False                # CPU de propósito: a placa é do Ollama.
 
