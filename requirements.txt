@@ -9,8 +9,11 @@ piper-tts
 requests
 
 # voz XTTS (alta qualidade): a voz mais natural, 100% offline, porem
-# pesada (puxa o PyTorch; modelo de ~1.8 GB). O instalador baixa o
-# modelo. Se nao instalar, o NEBELL usa o Kokoro abaixo.
+# pesada. O coqui-tts NAO puxa o PyTorch sozinho, entao o torch e o
+# torchaudio vem explicitos aqui (versao CPU; a placa fica com o Ollama).
+# Modelo de ~1.8 GB baixado pelo instalador. Se nao instalar, usa Kokoro.
+torch
+torchaudio
 coqui-tts
 
 # voz neural (Kokoro): reserva leve do XTTS, roda na CPU em onnxruntime.
