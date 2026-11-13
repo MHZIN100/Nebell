@@ -428,6 +428,7 @@ class TestPacotes(InstaladorTest):
             "faster_whisper": "faster-whisper", "webview": "pywebview",
             "PIL": "pillow", "docx": "python-docx", "pptx": "python-pptx",
             "kokoro_onnx": "kokoro-onnx", "TTS": "coqui-tts",
+            "edge_tts": "edge-tts",
         }
 
         for modulo, _ in I.CONFERIR:

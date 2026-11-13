@@ -21,9 +21,11 @@ Baixe este repositório e **dê dois cliques em `Instalar.bat`**.
 - baixa e instala o **Ollama** (que normalmente é um download manual à
   parte);
 - baixa o modelo **qwen3.5:4b**;
-- instala a **voz neural**: o **XTTS** (a mais natural, offline, porém
-  pesada) como principal, o **Kokoro** (leve) como reserva e o **Piper**
-  como última reserva — ela usa a primeira que carregar;
+- instala a **voz**: por padrão a **voz online da Microsoft** (quase
+  humana, pt-BR) quando há internet, caindo sozinha no **Kokoro**
+  (offline, leve) quando não há; o **Piper** é a última reserva. O
+  **XTTS** (offline, muito natural, mas pesado) fica pronto porém
+  desligado — só vale em máquina com bastante RAM (`USAR_XTTS`);
 - instala o **Tesseract**, para ela ler a tela (opcional).
 
 Da primeira vez leva um tempo e baixa uns 6,5 GB (o XTTS sozinho é
@@ -72,7 +74,7 @@ isso.
 
 | | |
 |---|---|
-| **Fala e ouve** | XTTS (voz neural, a mais natural) para falar, com Kokoro e Piper de reserva; faster-whisper para a escuta — tudo offline |
+| **Fala e ouve** | voz online da Microsoft (pt-BR) quando há internet, Kokoro offline quando não há, Piper de reserva (XTTS opcional); faster-whisper para a escuta |
 | **Pensa** | Ollama com qwen3.5:4b, local |
 | **Enxerga** | lê a sua tela, lê e edita imagens (OCR com Tesseract) |
 | **Mexe no PC** | abre programas, controla janelas, digita, busca e edita arquivos |

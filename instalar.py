@@ -51,6 +51,7 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
     ("voz XTTS (alta qualidade)", ["torch", "torchaudio", "torchcodec", "six", "coqui-tts"]),
+    ("voz online (Microsoft)", ["edge-tts", "soundfile"]),
     ("voz neural (Kokoro)", ["kokoro-onnx"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
     ("escuta na placa de vídeo", ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]),
@@ -65,6 +66,8 @@ BLOCOS = [
 CONFERIR = [
     ("piper", "voz (reserva)"),
     ("TTS", "voz XTTS (alta qualidade)"),
+    ("edge_tts", "voz online (Microsoft)"),
+    ("soundfile", "conversão de áudio da voz online"),
     ("kokoro_onnx", "voz neural (Kokoro)"),
     ("requests", "internet"),
     ("faster_whisper", "escuta por voz"),

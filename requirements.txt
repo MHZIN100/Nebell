@@ -19,6 +19,12 @@ torchcodec
 six
 coqui-tts
 
+# voz online (Microsoft, Edge TTS): quase humana, de graca e leve, mas
+# precisa de internet. O soundfile converte o MP3 dela para WAV. Entra em
+# dupla com o Kokoro: com internet fala online, sem internet cai no Kokoro.
+edge-tts
+soundfile
+
 # voz neural (Kokoro): reserva leve do XTTS, roda na CPU em onnxruntime.
 # Muito mais natural que o Piper e rapida. Puxa onnxruntime, numpy,
 # phonemizer e espeakng-loader. O modelo (~350 MB) e baixado pelo

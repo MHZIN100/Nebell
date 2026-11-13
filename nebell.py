@@ -92,6 +92,11 @@ except Exception:
     nebell_xtts = None
 
 try:
+    import nebell_edge
+except Exception:
+    nebell_edge = None
+
+try:
     import nebell_web
 except Exception:
     nebell_web = None
@@ -194,6 +199,14 @@ AUTO_DOWNLOAD_VOICE = True
 USAR_XTTS = False
 XTTS_FALANTE = "Ana Florence"   # voz embutida, feminina. Veja FALANTES_FEM.
 XTTS_GPU = False                # CPU de propósito: a placa é do Ollama.
+
+# Voz online da Microsoft (Edge TTS): quase humana, de graça e leve, mas
+# precisa de internet. Entra em dupla com o Kokoro (VozHibrida): com
+# internet fala com a Microsoft; sem internet (ou se a chamada falhar),
+# cai sozinha no Kokoro e volta a tentar o online depois. É a voz
+# principal quando o XTTS está desligado.
+USAR_EDGE = True
+EDGE_VOZ = "pt-BR-FranciscaNeural"   # feminina. Outra: pt-BR-ThalitaNeural
 
 USAR_KOKORO = True
 # Voz do Kokoro. pf_dora é feminina (pt-BR). Masculinas: pm_alex, pm_santa.
@@ -1821,6 +1834,25 @@ def preparar_xtts():
 
     except Exception as exc:
         print(f"[Voz] XTTS indisponível ({exc}). Vou tentar o Kokoro.")
+        return None
+
+
+def preparar_edge():
+    """
+    Deixa a voz online (Microsoft) pronta. Não acessa a internet aqui —
+    só monta o objeto; a conexão é testada na primeira fala, dentro da
+    VozHibrida. Então nunca trava a abertura, com ou sem internet.
+
+    Devolve a VozEdge, ou None se o edge-tts/soundfile faltarem.
+    """
+    if not (USAR_EDGE and nebell_edge is not None
+            and nebell_edge.biblioteca_ok()):
+        return None
+
+    try:
+        return nebell_edge.VozEdge(voz=EDGE_VOZ, log=print)
+    except Exception as exc:
+        print(f"[Voz] Voz online indisponível ({exc}).")
         return None
 
 
@@ -9838,11 +9870,30 @@ def encerrar(threads=()):
 
 
 def main():
-    global voice, VOICE_MODEL, voz_neural
+    global voice, VOICE_MODEL, voz_neural, VOZ_ROTULO
 
-    # Voz, da mais natural para a mais garantida: XTTS -> Kokoro -> Piper.
-    # Usa a primeira que carregar; se nenhuma neural der, cai no Piper.
-    voz_neural = preparar_xtts() or preparar_kokoro()
+    # Voz, da mais natural para a mais garantida:
+    #   XTTS (desligado por padrão: só em máquina forte)
+    #   -> online Microsoft + Kokoro offline (híbrida: usa internet quando
+    #      tem, cai no Kokoro quando não tem)
+    #   -> Kokoro sozinho
+    #   -> Piper (última reserva).
+    voz_neural = preparar_xtts()
+
+    if voz_neural is None:
+        offline = preparar_kokoro()      # VozKokoro (offline) ou None
+        online = preparar_edge()         # VozEdge (online) ou None
+
+        if online is not None and offline is not None:
+            voz_neural = nebell_edge.VozHibrida(online, offline, log=print)
+            nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
+            VOZ_ROTULO = f"Microsoft {nome} + Kokoro"
+        elif offline is not None:
+            voz_neural = offline         # VOZ_ROTULO já = "Kokoro · pf_dora"
+        elif online is not None:
+            voz_neural = online
+            nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
+            VOZ_ROTULO = f"Microsoft {nome}"
 
     if voz_neural is not None:
         print(f"Voz: {VOZ_ROTULO}.")
