@@ -18,6 +18,7 @@ devolve False e o NEBELL usa so o offline.
 """
 
 import asyncio
+import importlib.util
 import io
 import threading
 import time
@@ -28,15 +29,13 @@ try:
 except Exception:
     np = None
 
-try:
-    import soundfile as sf
-except Exception:
-    sf = None
-
-try:
-    import edge_tts
-except Exception:
-    edge_tts = None
+# IMPORTANTE: o edge_tts (puxa o aiohttp) e o soundfile (puxa o
+# libsndfile) carregam bibliotecas nativas que, se importadas na abertura
+# do NEBELL, brigam com a janela (WebView2) e o processo morre em
+# "Abrindo a interface" -- o mesmo tipo de conflito do XTTS. Por isso NÃO
+# são importados aqui no topo: entram só na hora de falar, dentro da
+# thread de síntese, quando a janela já está de pé. Aqui só checamos se
+# existem, sem carregá-los.
 
 
 VOZ_PADRAO = "pt-BR-FranciscaNeural"
@@ -57,8 +56,18 @@ ESPERA_APOS_FALHA = 30.0
 
 
 def biblioteca_ok():
-    """True quando dá para usar a voz online (edge-tts + soundfile + numpy)."""
-    return edge_tts is not None and sf is not None and np is not None
+    """True quando dá para usar a voz online (edge-tts + soundfile + numpy).
+    Checa pela presença dos módulos SEM importá-los (find_spec), para não
+    carregar as DLLs nativas na abertura."""
+    if np is None:
+        return False
+    try:
+        return (
+            importlib.util.find_spec("edge_tts") is not None
+            and importlib.util.find_spec("soundfile") is not None
+        )
+    except Exception:
+        return False
 
 
 def _para_wav(amostras, taxa):
@@ -97,6 +106,8 @@ class VozEdge:
         self._lock = threading.Lock()
 
     def _baixar_mp3(self, texto):
+        import edge_tts   # só agora, com a janela já aberta (ver topo)
+
         async def gerar():
             com = edge_tts.Communicate(texto, self.voz)
             pedacos = bytearray()
@@ -126,6 +137,8 @@ class VozEdge:
 
         if not mp3:
             raise RuntimeError("a Microsoft não devolveu áudio")
+
+        import soundfile as sf   # idem: só agora, fora da abertura
 
         dados, taxa = sf.read(io.BytesIO(mp3), dtype="float32", always_2d=False)
         return _para_wav(dados, taxa)
