@@ -28,6 +28,22 @@ from datetime import datetime
 from html import unescape
 from pathlib import Path
 
+# --- registro de falha nativa (diagnóstico) ----------------
+# Quando a janela não abre, o processo às vezes morre SEM erro no Python
+# (crash nativo de DLL, ou falta de memória). O faulthandler grava a
+# pilha dessas mortes neste arquivo, para a gente ver a causa real em vez
+# de adivinhar. É barato e pode ficar ligado para sempre.
+import faulthandler
+
+try:
+    _arq_crash = open(
+        Path(__file__).resolve().parent / "nebell_crash.log",
+        "w", encoding="utf-8", buffering=1,
+    )
+    faulthandler.enable(_arq_crash)
+except Exception:
+    pass
+
 import requests
 
 IS_WINDOWS = sys.platform.startswith("win")
@@ -9494,6 +9510,19 @@ def run_hud_mode():
         return False
 
     print("Abrindo a interface...")
+
+    # Diagnóstico: quanta RAM livre no momento de abrir a janela. Se
+    # estiver no talo, o travamento é falta de memória.
+    try:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        print(
+            f"[RAM] {vm.available // (1024 * 1024)} MB livres de "
+            f"{vm.total // (1024 * 1024)} MB ({vm.percent}% em uso)."
+        )
+    except Exception:
+        pass
 
     def trabalhador(janela=None):
         """

@@ -222,19 +222,12 @@ class HudBridge:
             text_select=True,
         )
 
-        # Abre ocupando a tela inteira (maximizada): a janela ainda tem
-        # barra de título, então dá para mover, minimizar e fechar, e a
-        # barra de tarefas continua à vista. O width/height acima é o
-        # tamanho que ela volta a ter quando a pessoa desmaximiza.
-        #
-        # 'maximized' só existe no pywebview recente; num mais antigo o
-        # create_window recusa o parâmetro e aí abrimos no tamanho normal.
-        try:
-            self.window = webview.create_window(
-                WINDOW_TITLE, maximized=True, **comum
-            )
-        except TypeError:
-            self.window = webview.create_window(WINDOW_TITLE, **comum)
+        # Abre no tamanho definido acima. O modo "maximizado" foi
+        # REMOVIDO: em algumas versões do pywebview no Windows ele impedia
+        # a janela de aparecer (o processo morria em "Abrindo a
+        # interface"). Reabrir em tela cheia volta depois, por um caminho
+        # que não corra esse risco.
+        self.window = webview.create_window(WINDOW_TITLE, **comum)
 
         self.active = True
         return True
