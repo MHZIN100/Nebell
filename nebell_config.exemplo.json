@@ -45,5 +45,8 @@
   "personalidade_custom": "",
 
   "_ajuda_ociosidade_min": "Minutos parado antes de soltar o modelo (qwen) e o Whisper da memoria da placa por conta propria. Eles recarregam sozinhos no proximo uso (2-3 s). Padrao: 10. Use 0 para desligar.",
-  "ociosidade_min": 10
+  "ociosidade_min": 10,
+
+  "_ajuda_perfil": "Perfil de arranque: 'equilibrado' (padrao), 'jogo' (libera a placa, escuta na CPU), 'estudo' (respostas longas, memoria maior) ou 'economia' (o minimo de maquina ligada, para pouca RAM/bateria). Nome invalido e ignorado.",
+  "perfil": "equilibrado"
 }

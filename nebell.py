@@ -257,6 +257,7 @@ _CONFIG_CAMPOS = {
     "personalidade": ("PERSONALIDADE", "txt"),
     "personalidade_custom": ("PERSONALIDADE_CUSTOM", "txt"),
     "ociosidade_min": ("OCIOSIDADE_MIN", "num"),
+    "perfil": ("PERFIL_PADRAO", "txt"),
 }
 
 
@@ -302,6 +303,12 @@ def _aplicar_config():
             if isinstance(valor, bool) or not isinstance(valor, (int, float)):
                 continue
             valor = float(valor)
+
+        # Guarda de valor para campos de domínio fechado: um perfil
+        # inválido derrubaria o arranque (PERFIS[perfil_atual]).
+        if nome == "PERFIL_PADRAO" and valor not in PERFIS:
+            print(f"[Config] perfil '{valor}' não existe; mantendo o padrão.")
+            continue
 
         g[nome] = valor
         aplicados.append(f"{nome}={valor!r}")

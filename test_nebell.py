@@ -7147,6 +7147,7 @@ class TestConfigDoUsuario(unittest.TestCase):
                 "USAR_XTTS", "XTTS_FALANTE", "USAR_EDGE", "EDGE_VOZ",
                 "USAR_KOKORO", "KOKORO_VOZ", "KOKORO_VELOCIDADE",
                 "AUTO_DOWNLOAD_VOICE", "CONFIG_FILE", "OCIOSIDADE_MIN",
+                "PERFIL_PADRAO",
             )
         }
         self.pasta = Path(tempfile.mkdtemp(prefix="nebell_cfg_"))
@@ -7183,6 +7184,28 @@ class TestConfigDoUsuario(unittest.TestCase):
     def test_ociosidade_min_do_config(self):
         self._aplicar({"ociosidade_min": 3})
         self.assertEqual(J.OCIOSIDADE_MIN, 3.0)
+
+    def test_perfil_valido_do_config(self):
+        self._aplicar({"perfil": "economia"})
+        self.assertEqual(J.PERFIL_PADRAO, "economia")
+
+    def test_perfil_invalido_e_ignorado(self):
+        with mock.patch("builtins.print"):
+            ap = self._aplicar({"perfil": "nao_existe"})
+        self.assertEqual(ap, [])
+        self.assertEqual(J.PERFIL_PADRAO, "equilibrado")   # padrao preservado
+
+    def test_todo_perfil_tem_as_chaves(self):
+        esperadas = {
+            "descricao", "num_ctx", "num_predict", "keep_alive",
+            "whisper", "whisper_device", "sentinela",
+            "sentinela_intervalo", "painel_intervalo", "verboso",
+        }
+        for nome, dados in J.PERFIS.items():
+            self.assertTrue(
+                esperadas.issubset(dados.keys()),
+                f"perfil {nome} sem as chaves: {esperadas - set(dados.keys())}",
+            )
 
     def test_json_quebrado_e_ignorado(self):
         with mock.patch("builtins.print"):
