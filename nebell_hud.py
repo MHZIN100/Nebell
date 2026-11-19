@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 11
+HUD_VERSAO = 12
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -222,12 +222,17 @@ class HudBridge:
             text_select=True,
         )
 
-        # Abre no tamanho definido acima. O modo "maximizado" foi
-        # REMOVIDO: em algumas versões do pywebview no Windows ele impedia
-        # a janela de aparecer (o processo morria em "Abrindo a
-        # interface"). Reabrir em tela cheia volta depois, por um caminho
-        # que não corra esse risco.
-        self.window = webview.create_window(WINDOW_TITLE, **comum)
+        # Abre MAXIMIZADA (tela cheia, com barra de título). O crash que
+        # antes parecia ser disto era, na verdade, a corrida do PyAudio
+        # (já corrigida com o cadeado), então dá para voltar o maximizado.
+        # 'maximized' só existe no pywebview recente; num antigo cai no
+        # tamanho normal sem quebrar.
+        try:
+            self.window = webview.create_window(
+                WINDOW_TITLE, maximized=True, **comum
+            )
+        except TypeError:
+            self.window = webview.create_window(WINDOW_TITLE, **comum)
 
         self.active = True
         return True
@@ -510,7 +515,9 @@ button:hover{background:rgba(150,60,245,.2)}
    clica. Os niveis ate o escolhido ficam "acesos", como uma barra que
    enche; a cor segue o nivel (azul/roxo/rosa). */
 .effort-wrap{position:relative;display:inline-flex}
-.effort-pop{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);z-index:60;
+/* Ancorado à direita (alinha com o botão) e abrindo para a esquerda,
+   para a janela não cortar o painel na beira da tela. */
+.effort-pop{position:absolute;bottom:calc(100% + 10px);right:-4px;z-index:60;
  background:var(--panel);border:1px solid var(--line);padding:11px 12px 9px;width:234px;
  box-shadow:0 10px 34px rgba(0,0,0,.6)}
 .effort-pop[hidden]{display:none}

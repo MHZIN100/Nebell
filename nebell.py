@@ -1861,8 +1861,16 @@ def preparar_edge():
 
     Devolve a VozEdge, ou None se o edge-tts/soundfile faltarem.
     """
-    if not (USAR_EDGE and nebell_edge is not None
-            and nebell_edge.biblioteca_ok()):
+    if not USAR_EDGE or nebell_edge is None:
+        return None
+
+    if not nebell_edge.biblioteca_ok():
+        # Diz POR QUE a voz online não está disponível (qual import falhou).
+        try:
+            import numpy, edge_tts, soundfile  # noqa: F401
+            print("[Voz] Voz online indisponível (biblioteca não ok).")
+        except Exception as exc:
+            print(f"[Voz] Voz online indisponível: {type(exc).__name__}: {exc}")
         return None
 
     try:
@@ -1881,8 +1889,15 @@ def preparar_kokoro():
     """
     global VOZ_ROTULO
 
-    if not (USAR_KOKORO and nebell_kokoro is not None
-            and nebell_kokoro.biblioteca_ok()):
+    if not USAR_KOKORO or nebell_kokoro is None:
+        return None
+
+    if not nebell_kokoro.biblioteca_ok():
+        try:
+            import numpy, kokoro_onnx  # noqa: F401
+            print("[Voz] Kokoro indisponível (biblioteca não ok).")
+        except Exception as exc:
+            print(f"[Voz] Kokoro indisponível: {type(exc).__name__}: {exc}")
         return None
 
     try:
