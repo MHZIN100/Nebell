@@ -256,6 +256,7 @@ _CONFIG_CAMPOS = {
     "usar_tesseract": ("USAR_TESSERACT", "bool"),
     "personalidade": ("PERSONALIDADE", "txt"),
     "personalidade_custom": ("PERSONALIDADE_CUSTOM", "txt"),
+    "ociosidade_min": ("OCIOSIDADE_MIN", "num"),
 }
 
 
@@ -648,6 +649,13 @@ USAR_TESSERACT = True
 PERSONALIDADE = "profissional"
 PERSONALIDADE_CUSTOM = ""
 
+# Minutos parado antes de soltar o qwen (VRAM) e o Whisper por conta
+# própria. Os dois recarregam sozinhos no próximo uso (dois ou três
+# segundos). 0 desliga o descarregamento por ociosidade. Convive com o
+# keep_alive do perfil -- este só é mais rápido e determinístico.
+# Ajustável no nebell_config.json (ociosidade_min).
+OCIOSIDADE_MIN = 10
+
 # Agora sim, com TODAS as constantes de config já definidas, aplica o
 # nebell_config.json por cima dos padrões (sem risco de ser sobrescrito).
 _CONFIG_APLICADA = _aplicar_config()
@@ -844,6 +852,13 @@ _current_audio = None          # mantem o buffer vivo durante a reproducao
 _level_sent_at = 0.0
 _filler_cache = {}
 metrics = {"request_started": 0.0, "first_audio": 0.0}
+
+# Descarregar na ociosidade: depois de um tempo parado, soltamos o qwen
+# (VRAM) e o Whisper de proposito; os dois recarregam sozinhos no proximo
+# uso. `ultima_atividade` guarda o relogio da ultima vez que algo rodou;
+# `_soltos_por_ociosidade` evita soltar de novo a cada rodada do vigia.
+ultima_atividade = [time.monotonic()]
+_soltos_por_ociosidade = [False]
 
 
 def microphone_available():
@@ -2603,6 +2618,52 @@ def liberar_whisper():
 
     except Exception:
         return False
+
+
+def _deve_soltar_por_ociosidade(agora):
+    """Decide (sem efeitos) se e hora de soltar qwen + Whisper.
+
+    Separada de proposito do vigia para ser facil de testar: so le o
+    relogio e os sinais, nao mexe em nada. True quando TODAS valem:
+    - OCIOSIDADE_MIN > 0 (o recurso esta ligado);
+    - nao esta ocupado (busy_event limpo: nem falando nem gerando);
+    - nao esta capturando audio no microfone;
+    - ainda nao soltamos nesta janela de ociosidade;
+    - passou tempo suficiente desde a ultima atividade.
+    """
+    if OCIOSIDADE_MIN <= 0:
+        return False
+    if busy_event.is_set():
+        return False
+    if mic_manager is not None and mic_manager.capturando.is_set():
+        return False
+    if _soltos_por_ociosidade[0]:
+        return False
+    return agora - ultima_atividade[0] >= OCIOSIDADE_MIN * 60
+
+
+def vigia_ociosidade():
+    """Thread que, de tempos em tempos, solta o modelo se tudo esta parado.
+
+    Acorda a cada ~20 s. Quando `_deve_soltar_por_ociosidade` concorda,
+    chama `liberar_whisper()` e `descarregar_modelo()` -- os dois
+    recarregam sozinhos no proximo uso -- e marca que ja soltou, para
+    nao repetir a cada rodada. Qualquer atividade nova (carimbada no
+    dispatcher) zera essa marca e o ciclo recomeca.
+    """
+    while not shutdown_event.is_set():
+        if shutdown_event.wait(20):
+            return
+
+        try:
+            if _deve_soltar_por_ociosidade(time.monotonic()):
+                liberar_whisper()
+                descarregar_modelo()
+                _soltos_por_ociosidade[0] = True
+                print("[Ociosidade] soltei qwen + Whisper (voltam ao usar)")
+        except Exception:
+            if nebell_log:
+                nebell_log.engolido("vigia_ociosidade")
 
 
 def liberar_maquina(derrubar_ollama=False, recarregar_depois=False):
@@ -9818,6 +9879,11 @@ def dispatcher_loop():
         except queue.Empty:
             continue
 
+        # Chegou trabalho: carimba a atividade e rearma o vigia de
+        # ociosidade (se tinha soltado o modelo, ele volta a contar).
+        ultima_atividade[0] = time.monotonic()
+        _soltos_por_ociosidade[0] = False
+
         if origem == "sair":
             shutdown_event.set()
             ui_message("nebell", "Encerrando, senhor.")
@@ -10522,6 +10588,7 @@ def main():
     threading.Thread(target=warm_up_voice, daemon=True).start()
     threading.Thread(target=load_location_background, daemon=True).start()
     threading.Thread(target=garantir_voz, daemon=True).start()
+    threading.Thread(target=vigia_ociosidade, daemon=True).start()
 
     if SENTINELA_LIGADA and PERFIS[perfil_atual]["sentinela"]:
         iniciar_sentinela()

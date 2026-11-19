@@ -7070,6 +7070,72 @@ class TestAvisaAJanelaOQueEstaFazendo(NebellTest):
         self.assertEqual(faltando, [], ", ".join(faltando))
 
 
+class TestOciosidade(NebellTest):
+    """Soltar qwen + Whisper depois de um tempo parado, sem risco de
+    soltar no meio de uma fala ou de uma escuta."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig = {
+            "OCIOSIDADE_MIN": J.OCIOSIDADE_MIN,
+            "mic_manager": J.mic_manager,
+            "ultima": J.ultima_atividade[0],
+            "soltos": J._soltos_por_ociosidade[0],
+        }
+        J.OCIOSIDADE_MIN = 10
+        J.mic_manager = None
+        J.busy_event.clear()
+        J._soltos_por_ociosidade[0] = False
+        # Relogio bem no passado: tempo de sobra ja decorrido.
+        J.ultima_atividade[0] = J.time.monotonic() - 9999
+
+    def tearDown(self):
+        J.OCIOSIDADE_MIN = self._orig["OCIOSIDADE_MIN"]
+        J.mic_manager = self._orig["mic_manager"]
+        J.ultima_atividade[0] = self._orig["ultima"]
+        J._soltos_por_ociosidade[0] = self._orig["soltos"]
+        J.busy_event.clear()
+        super().tearDown()
+
+    def _agora(self):
+        return J.time.monotonic()
+
+    def test_solta_quando_parado_ha_tempo(self):
+        self.assertTrue(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_nao_solta_se_ocupado(self):
+        J.busy_event.set()
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_nao_solta_se_capturando(self):
+        mic = mock.Mock()
+        mic.capturando.is_set.return_value = True
+        J.mic_manager = mic
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_desligado_com_zero(self):
+        J.OCIOSIDADE_MIN = 0
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_nao_repete_se_ja_soltou(self):
+        J._soltos_por_ociosidade[0] = True
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_nao_solta_cedo_demais(self):
+        J.ultima_atividade[0] = self._agora()      # acabou de rodar
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+
+    def test_atividade_rearma_o_vigia(self):
+        # Simula o carimbo do dispatcher: zera o flag e o relogio.
+        J._soltos_por_ociosidade[0] = True
+        J.ultima_atividade[0] = self._agora()
+        J._soltos_por_ociosidade[0] = False
+        self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
+        # E depois de passar o tempo de novo, volta a soltar.
+        J.ultima_atividade[0] = self._agora() - 9999
+        self.assertTrue(J._deve_soltar_por_ociosidade(self._agora()))
+
+
 class TestConfigDoUsuario(unittest.TestCase):
     """O nebell_config.json (opcional) sobrepoe os ajustes de voz sem
     mexer no codigo, e nunca derruba o NEBELL quando vem torto."""
@@ -7080,7 +7146,7 @@ class TestConfigDoUsuario(unittest.TestCase):
             n: getattr(J, n) for n in (
                 "USAR_XTTS", "XTTS_FALANTE", "USAR_EDGE", "EDGE_VOZ",
                 "USAR_KOKORO", "KOKORO_VOZ", "KOKORO_VELOCIDADE",
-                "AUTO_DOWNLOAD_VOICE", "CONFIG_FILE",
+                "AUTO_DOWNLOAD_VOICE", "CONFIG_FILE", "OCIOSIDADE_MIN",
             )
         }
         self.pasta = Path(tempfile.mkdtemp(prefix="nebell_cfg_"))
@@ -7113,6 +7179,10 @@ class TestConfigDoUsuario(unittest.TestCase):
         self.assertIs(J.USAR_XTTS, True)
         self.assertEqual(J.EDGE_VOZ, "pt-BR-AntonioNeural")
         self.assertEqual(J.KOKORO_VELOCIDADE, 1.3)
+
+    def test_ociosidade_min_do_config(self):
+        self._aplicar({"ociosidade_min": 3})
+        self.assertEqual(J.OCIOSIDADE_MIN, 3.0)
 
     def test_json_quebrado_e_ignorado(self):
         with mock.patch("builtins.print"):

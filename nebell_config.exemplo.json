@@ -42,5 +42,8 @@
   "personalidade": "profissional",
 
   "_ajuda_personalidade_custom": "Se personalidade = 'personalizado', descreva aqui o estilo que voce quer (texto livre).",
-  "personalidade_custom": ""
+  "personalidade_custom": "",
+
+  "_ajuda_ociosidade_min": "Minutos parado antes de soltar o modelo (qwen) e o Whisper da memoria da placa por conta propria. Eles recarregam sozinhos no proximo uso (2-3 s). Padrao: 10. Use 0 para desligar.",
+  "ociosidade_min": 10
 }
