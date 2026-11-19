@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 9
+HUD_VERSAO = 10
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -505,6 +505,26 @@ button:hover{background:rgba(150,60,245,.2)}
 #effort:hover{background:rgba(150,60,245,.2)}
 #effort[data-nivel="rapido"]{border-color:#4a86ff;color:#cfe0ff}
 #effort[data-nivel="alto"]{border-color:#ff4d7a;color:#ffd0dc}
+/* Mini-painel do esforco: abre acima do botao, com uma barra de 3
+   niveis (Instantanea embaixo, Alta em cima) que a pessoa arrasta ou
+   clica. Os niveis ate o escolhido ficam "acesos", como uma barra que
+   enche; a cor segue o nivel (azul/roxo/rosa). */
+.effort-wrap{position:relative;display:inline-flex}
+.effort-pop{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);z-index:60;
+ background:var(--panel);border:1px solid var(--line);padding:10px 10px 8px;min-width:150px;
+ box-shadow:0 10px 34px rgba(0,0,0,.6)}
+.effort-pop[hidden]{display:none}
+.ep-titulo{font:600 9px Orbitron,sans-serif;letter-spacing:.28em;color:var(--dim);text-align:center;margin-bottom:9px}
+.ep-barra{display:flex;flex-direction:column;gap:5px;touch-action:none}
+.ep-stop{width:100%;text-align:center;padding:9px 10px;border:1px solid var(--line);background:transparent;
+ color:var(--dim);font:500 11px Orbitron,sans-serif;letter-spacing:.06em;cursor:pointer;user-select:none;
+ transition:background .12s,color .12s,border-color .12s}
+.ep-stop:hover{color:var(--text);border-color:var(--acc)}
+/* aceso (barra enchendo): cor conforme o nivel escolhido */
+.ep-barra[data-nivel="rapido"] .ep-stop.on{background:rgba(74,134,255,.18);border-color:#4a86ff;color:#cfe0ff}
+.ep-barra[data-nivel="normal"] .ep-stop.on{background:rgba(150,60,245,.2);border-color:var(--acc);color:#eadcff}
+.ep-barra[data-nivel="alto"]   .ep-stop.on{background:rgba(255,77,122,.18);border-color:#ff4d7a;color:#ffd0dc}
+.ep-stop.sel{box-shadow:inset 0 0 0 1px currentColor}
 #halt{border-color:rgba(255,120,120,.5);color:#ff9b9b}
 #halt:hover{background:rgba(255,120,120,.15)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
@@ -541,9 +561,19 @@ select:focus{border-color:var(--acc)}
   <button id="file" class="iconbtn" title="Enviar um arquivo ou imagem para o NEBELL">
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
   </button>
-  <button id="effort" class="iconbtn" title="Nível de esforço do modelo. No alto ele raciocina antes de responder.">
-   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><line x1="12" y1="15" x2="16" y2="9.8"/><circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none"/></svg>
-  </button>
+  <div class="effort-wrap">
+   <button id="effort" class="iconbtn" title="Nível de esforço do modelo. Clique para abrir a barra.">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><line x1="12" y1="15" x2="16" y2="9.8"/><circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none"/></svg>
+   </button>
+   <div id="effort-pop" class="effort-pop" hidden>
+    <div class="ep-titulo">ESFORÇO</div>
+    <div class="ep-barra" id="ep-barra" data-nivel="normal">
+     <button class="ep-stop" data-nivel="alto">Alta</button>
+     <button class="ep-stop" data-nivel="normal">Média</button>
+     <button class="ep-stop" data-nivel="rapido">Instantânea</button>
+    </div>
+   </div>
+  </div>
   <button id="halt" class="iconbtn" title="Interrompe a fala e a geração">
    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
   </button>
@@ -1675,22 +1705,47 @@ $('#file').addEventListener('click',async()=>{
  finally{bt.disabled=false}});
 // Botao ESFORCO: rapido -> normal -> alto -> rapido. Este e o unico
 // lugar que liga o "pensar antes de responder" do modelo (nivel alto).
-const NIVEIS_ESFORCO=['rapido','normal','alto'];
-const ROTULO_ESFORCO={rapido:'rápido',normal:'normal',alto:'alto'};
+const NIVEIS_ESFORCO=['rapido','normal','alto']; // índice 0..2 = baixo..alto
+const ROTULO_ESFORCO={rapido:'Instantânea',normal:'Média',alto:'Alta'};
 let nivelEsforco='normal';
-// Minimalista: o botao e so o icone. A cor (data-nivel) mostra o nivel,
-// e o tooltip diz qual e. Nao mexe no conteudo, senao apaga o SVG.
-function pintarEsforco(){const bt=$('#effort');if(!bt)return;
- bt.dataset.nivel=nivelEsforco;
- bt.title='Esforço: '+(ROTULO_ESFORCO[nivelEsforco]||nivelEsforco)
-  +' — no alto ele raciocina antes de responder'}
+// O botão abre um mini-painel com uma barra de 3 níveis. A cor do botão
+// (data-nivel) e o tooltip seguem o nível; o conteúdo (SVG) não é tocado.
+function pintarEsforco(){const bt=$('#effort');if(bt){
+  bt.dataset.nivel=nivelEsforco;
+  bt.title='Esforço: '+(ROTULO_ESFORCO[nivelEsforco]||nivelEsforco)
+   +'. Clique para abrir a barra.';}
+ pintarPopover();}
+// A barra "enche" do nível escolhido para baixo (Instantânea no fim).
+function pintarPopover(){const barra=$('#ep-barra');if(!barra)return;
+ barra.dataset.nivel=nivelEsforco;
+ const sel=NIVEIS_ESFORCO.indexOf(nivelEsforco);
+ barra.querySelectorAll('.ep-stop').forEach(st=>{
+  const i=NIVEIS_ESFORCO.indexOf(st.dataset.nivel);
+  st.classList.toggle('on', i>=0 && i<=sel);
+  st.classList.toggle('sel', i===sel);});}
 function aplicarEsforco(nivel,avisarPython){
  if(NIVEIS_ESFORCO.indexOf(nivel)<0)return;
+ const mudou=nivel!==nivelEsforco;
  nivelEsforco=nivel;pintarEsforco();
- if(avisarPython){const b=bridge();if(b&&b.set_esforco)b.set_esforco(nivel)}}
-$('#effort').addEventListener('click',()=>{
- const i=NIVEIS_ESFORCO.indexOf(nivelEsforco);
- aplicarEsforco(NIVEIS_ESFORCO[(i+1)%NIVEIS_ESFORCO.length],true)});
+ if(avisarPython&&mudou){const b=bridge();if(b&&b.set_esforco)b.set_esforco(nivel);}}
+function abrirEsforco(abrir){const pop=$('#effort-pop');if(pop)pop.hidden=!abrir;}
+// Clicar no botão abre/fecha o painel.
+$('#effort').addEventListener('click',e=>{e.stopPropagation();
+ const pop=$('#effort-pop');abrirEsforco(!!(pop&&pop.hidden));});
+// Barra: clicar escolhe um nível; arrastar passa por eles.
+(function(){const barra=$('#ep-barra');if(!barra)return;
+ function nivelDoPonto(y){let alvo=null;
+  barra.querySelectorAll('.ep-stop').forEach(st=>{const r=st.getBoundingClientRect();
+   if(y>=r.top&&y<=r.bottom)alvo=st.dataset.nivel;});return alvo;}
+ let arrastando=false;
+ barra.addEventListener('pointerdown',e=>{arrastando=true;
+  try{barra.setPointerCapture(e.pointerId);}catch(_){}
+  const n=nivelDoPonto(e.clientY);if(n)aplicarEsforco(n,true);});
+ barra.addEventListener('pointermove',e=>{if(!arrastando)return;
+  const n=nivelDoPonto(e.clientY);if(n)aplicarEsforco(n,true);});
+ barra.addEventListener('pointerup',()=>{arrastando=false;});})();
+// Clicar fora fecha o painel.
+document.addEventListener('click',e=>{if(!e.target.closest('.effort-wrap'))abrirEsforco(false);});
 pintarEsforco();
 // Esc também interrompe
 addEventListener('keydown',e=>{if(e.key==='Escape'){const b=bridge();if(b&&b.stop)b.stop()}});

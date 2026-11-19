@@ -37,6 +37,33 @@ from pathlib import Path
 # módulo serializa TODA enumeração: nunca duas ao mesmo tempo.
 _PORTAUDIO_LOCK = threading.Lock()
 
+
+def _parece_saida(nome):
+    """
+    True quando o nome indica uma SAÍDA de áudio (alto-falante, mixagem
+    estéreo, loopback de speaker) em vez de um microfone de entrada.
+
+    O Windows marca alguns desses com canais de entrada (loopback/SST,
+    "stereo mix"), então o filtro por maxInputChannels não basta: a lista
+    fica poluída com coisas que não são microfone. Aqui a gente corta
+    pelo nome.
+    """
+    try:
+        base = (
+            unicodedata.normalize("NFKD", nome or "")
+            .encode("ascii", "ignore")
+            .decode()
+            .lower()
+        )
+    except Exception:
+        base = (nome or "").lower()
+
+    chaves = (
+        "alto-falante", "alto falante", "speaker", "mixagem",
+        "stereo mix", "wave out", "output", "saida",
+    )
+    return any(c in base for c in chaves)
+
 try:
     import speech_recognition as sr
 except Exception:
@@ -305,6 +332,11 @@ class MicManager:
                     continue
 
                 if int(info.get("maxInputChannels") or 0) < 1:
+                    continue
+
+                # Corta saídas de áudio que se passam por entrada
+                # (alto-falante com loopback, mixagem estéreo, etc.).
+                if _parece_saida(info.get("name") or ""):
                     continue
 
                 encontrados.append(
