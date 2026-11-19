@@ -394,6 +394,50 @@ class Memoria:
         )
         return [dict(linha) for linha in linhas]
 
+    def listar_conversas(self, limite=12):
+        """
+        Conversas recentes para o painel de historico.
+
+        Diferente de conversas_recentes (que so traz as resumidas, para o
+        briefing de abertura): aqui vem TODAS -- com ou sem resumo --
+        menos a ativa, que e aquela em que a pessoa ja esta. Devolve id,
+        inicio, fim, titulo, resumo e total.
+        """
+        atual = ""
+        parametros = []
+
+        if self.conversa_id is not None:
+            atual = "WHERE id != ?"
+            parametros.append(self.conversa_id)
+
+        parametros.append(limite)
+
+        linhas = self.consultar(
+            f"""
+            SELECT id, inicio, fim, titulo, resumo, total
+            FROM conversas {atual}
+            ORDER BY id DESC LIMIT ?
+            """,
+            tuple(parametros),
+        )
+        return [dict(linha) for linha in linhas]
+
+    def ativar_conversa(self, conversa_id):
+        """
+        Volta a ser a conversa ativa uma conversa antiga, para continuar
+        nela. Devolve True quando a conversa existe (e passou a ativa);
+        False quando o id nao existe -- aí nada muda.
+        """
+        linhas = self.consultar(
+            "SELECT id FROM conversas WHERE id = ?", (conversa_id,)
+        )
+
+        if not linhas:
+            return False
+
+        self.conversa_id = conversa_id
+        return True
+
     def material_para_resumo(self, limite=30):
         """O que foi dito nesta sessao, para pedir um resumo ao modelo."""
         if self.conversa_id is None:

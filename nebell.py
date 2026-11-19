@@ -3719,6 +3719,75 @@ def refresh_system_prompt(para_codigo=False):
         }
 
 
+def listar_conversas(limite=12):
+    """
+    Conversas antigas para o painel de historico da janela: um rotulo
+    (titulo, ou o inicio do resumo, ou 'conversa'), quando foi e quantas
+    mensagens tem. Lista vazia quando nao ha memoria.
+    """
+    if memoria is None:
+        return []
+
+    saida = []
+
+    for c in memoria.listar_conversas(limite=limite):
+        titulo = (c.get("titulo") or "").strip()
+        resumo = (c.get("resumo") or "").strip()
+        rotulo = titulo or (resumo[:48] + ("…" if len(resumo) > 48 else "")) \
+            or "conversa"
+
+        saida.append({
+            "id": c["id"],
+            "titulo": rotulo,
+            "quando": nebell_memoria.quando(c["inicio"]) if c.get("inicio") else "",
+            "total": c.get("total") or 0,
+        })
+
+    return saida
+
+
+def carregar_conversa(id_conversa):
+    """
+    Continua uma conversa antiga: torna-a a ativa, repovoa o `history`
+    (system prompt + as ultimas mensagens dela) e repinta a janela.
+
+    O ponto UNICO de troca de conversa -- em vez de mexer em globais
+    soltas espalhadas. Devolve True quando deu certo; False quando nao ha
+    memoria ou o id nao existe (aí nada muda).
+    """
+    global history
+
+    if memoria is None:
+        return False
+
+    if not memoria.ativar_conversa(id_conversa):
+        return False
+
+    mensagens = memoria.transcricao(id_conversa, limite=MAX_HISTORY_MESSAGES)
+
+    novo = [{"role": "system", "content": build_system_prompt()}]
+    for m in mensagens:
+        if m["papel"] in ("user", "assistant"):
+            novo.append({"role": m["papel"], "content": m["conteudo"]})
+    history = novo
+
+    if hud is not None:
+        hud.limpar_conversa()
+        for m in mensagens:
+            papel = "user" if m["papel"] == "user" else "nebell"
+            hud.add_message(papel, m["conteudo"])
+
+    return True
+
+
+def hud_abrir_conversa(id_conversa):
+    """A janela pediu para continuar uma conversa antiga do historico."""
+    if carregar_conversa(id_conversa):
+        ui_state("idle")
+    elif hud is not None:
+        hud.add_message("nebell", "Não consegui abrir essa conversa, senhor.")
+
+
 # --- ferramentas de memoria ---------------------------------
 
 def tool_lembrar(fato, categoria=None):
@@ -10106,6 +10175,8 @@ def run_hud_mode():
     hud.on_set_esforco = hud_set_esforco
     hud.on_set_voz = hud_set_voz
     hud.on_set_mudo = hud_set_mudo
+    hud.on_abrir_conversa = hud_abrir_conversa
+    hud.obter_conversas = listar_conversas
     hud.on_ready = hud_ready
 
     if not hud.create():

@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 16
+HUD_VERSAO = 17
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -80,6 +80,8 @@ class HudBridge:
         self.on_set_esforco = None
         self.on_set_voz = None
         self.on_set_mudo = None
+        self.on_abrir_conversa = None   # HUD->Python: continuar uma conversa
+        self.obter_conversas = None     # HUD->Python: lista para o historico
 
         self._pending = []
         self._lock = threading.Lock()
@@ -143,6 +145,32 @@ class HudBridge:
             if bridge.on_set_mudo:
                 threading.Thread(
                     target=bridge.on_set_mudo, args=(bool(ligado),), daemon=True
+                ).start()
+
+            return True
+
+        def pedir_conversas(self):
+            """A pagina pede a lista de conversas para o painel de
+            historico. Devolve a lista na hora (como o pick_files)."""
+            fn = self._bridge.obter_conversas
+
+            try:
+                return list(fn()) if fn else []
+            except Exception:
+                return []
+
+        def abrir_conversa(self, id):
+            """A pagina pediu para continuar uma conversa antiga."""
+            bridge = self._bridge
+
+            try:
+                cid = int(id)
+            except Exception:
+                return False
+
+            if bridge.on_abrir_conversa:
+                threading.Thread(
+                    target=bridge.on_abrir_conversa, args=(cid,), daemon=True
                 ).start()
 
             return True
@@ -465,6 +493,14 @@ class HudBridge:
     def mostrar_mudo(self, ligado):
         """Reflete na janela se o microfone esta silenciado."""
         self.call("setMudo", bool(ligado))
+
+    def set_conversas(self, lista):
+        """Entrega a lista de conversas antigas ao painel de historico."""
+        self.call("setConversas", lista)
+
+    def limpar_conversa(self):
+        """Esvazia o log da janela, para repintar outra conversa."""
+        self.call("limparLog")
 
     def notice(self, texto):
         self.add_message("nebell", texto)

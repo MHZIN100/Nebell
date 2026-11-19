@@ -125,6 +125,20 @@ select:focus{border-color:var(--acc)}
 /* Botão de silenciar o microfone: quando ligado (silenciado), fica
    vermelho, como o botão de parar. */
 #micmute[aria-pressed="true"]{border-color:#ff4d7a;color:#ff9b9b;background:rgba(255,77,122,.12)}
+/* Histórico de conversas: painel que abre acima do botão do rodapé. */
+.hist-wrap{position:relative;display:inline-flex}
+.hist-pop{position:absolute;bottom:calc(100% + 10px);right:0;width:320px;max-height:340px;
+ display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);
+ box-shadow:0 10px 30px rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:30}
+.hist-pop[hidden]{display:none}
+.hist-cab{font:500 10px Orbitron,sans-serif;letter-spacing:.25em;color:var(--acc);padding:10px 12px;border-bottom:1px solid var(--line)}
+.hist-lista{overflow:auto;padding:6px}
+.hist-item{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;border-left:2px solid var(--line);
+ padding:8px 10px;margin:2px 0;cursor:pointer;color:var(--text);font:inherit;letter-spacing:normal}
+.hist-item:hover{border-color:var(--acc);background:rgba(255,255,255,.04)}
+.hist-tit{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-sub{font-size:10px;color:var(--dim);letter-spacing:.1em;margin-top:2px}
+.hist-vazio{color:var(--dim);font-size:11px;padding:14px 10px;text-align:center}
 #demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
 @media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}

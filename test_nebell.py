@@ -870,6 +870,52 @@ class TestMemoria(NebellTest):
     def test_listar_memoria_vazia(self):
         self.assertIn("vazia", J.tool_listar_memoria())
 
+
+class TestHistoricoDeConversas(NebellTest):
+    """O painel de histórico: listar as conversas antigas e continuar
+    numa delas (repovoando o history)."""
+
+    def _conversa(self, *falas):
+        J.memoria.iniciar_conversa("texto")
+        for papel, texto in falas:
+            J.memoria.registrar_mensagem(papel, texto)
+        return J.memoria.conversa_id
+
+    def test_listar_conversas_formata_para_a_janela(self):
+        alvo = self._conversa(("user", "oi"), ("assistant", "olá, senhor"))
+        self._conversa(("user", "conversa atual"))
+
+        lista = J.listar_conversas()
+        item = next(x for x in lista if x["id"] == alvo)
+        self.assertEqual(item["total"], 2)
+        self.assertIn("titulo", item)
+        self.assertIn("quando", item)
+
+    def test_listar_conversas_sem_memoria(self):
+        with mock.patch.object(J, "memoria", None):
+            self.assertEqual(J.listar_conversas(), [])
+
+    def test_carregar_conversa_repovoa_o_history(self):
+        alvo = self._conversa(
+            ("user", "como está o projeto?"),
+            ("assistant", "vai bem, senhor"),
+        )
+        self._conversa(("user", "outra coisa"))
+
+        self.assertTrue(J.carregar_conversa(alvo))
+        self.assertEqual(J.memoria.conversa_id, alvo)
+
+        papeis = [m["role"] for m in J.history]
+        self.assertEqual(papeis, ["system", "user", "assistant"])
+        self.assertEqual(J.history[1]["content"], "como está o projeto?")
+
+    def test_carregar_conversa_id_inexistente(self):
+        self.assertFalse(J.carregar_conversa(999999))
+
+    def test_carregar_conversa_sem_memoria(self):
+        with mock.patch.object(J, "memoria", None):
+            self.assertFalse(J.carregar_conversa(1))
+
     def test_listar_mostra_os_numeros(self):
         J.tool_lembrar("algo")
         self.assertIn("conversas", J.tool_listar_memoria())

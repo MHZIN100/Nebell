@@ -136,6 +136,30 @@ function submit(text){text=text.trim();if(!text)return;addMessage('user',text);
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
  else if(api.onSubmit)api.onSubmit(text);
  else{setState('pensando');setTimeout(()=>{setState('falando');addMessage('nebell','Modo demonstração, senhor. Estou pronto para ser conectado.');setTimeout(()=>setState('espera'),2200)},1100)}}
+// Historico de conversas: lista as antigas e deixa continuar numa delas.
+// A lista vem do Python (pedir_conversas, que devolve uma Promise);
+// clicar num item pede para continuar aquela conversa (abrir_conversa).
+function limparLog(){const log=$('#log');if(log)log.replaceChildren();streamP=null}
+function renderConversas(lista){
+ const box=$('#hist-lista');if(!box)return;box.replaceChildren();
+ if(!Array.isArray(lista)||!lista.length){
+  const v=document.createElement('div');v.className='hist-vazio';v.textContent='Sem conversas anteriores.';box.appendChild(v);return}
+ for(const c of lista){
+  const it=document.createElement('button');it.type='button';it.className='hist-item';
+  const t=document.createElement('div');t.className='hist-tit';t.textContent=c.titulo||'conversa';
+  const s=document.createElement('div');s.className='hist-sub';
+  s.textContent=(c.quando||'')+(c.total?(' · '+c.total+' msgs'):'');
+  it.append(t,s);
+  it.addEventListener('click',()=>{const b=bridge();if(b&&b.abrir_conversa)b.abrir_conversa(c.id);abrirHist(false)});
+  box.appendChild(it);
+ }
+}
+async function carregarHist(){
+ const b=bridge();
+ if(b&&b.pedir_conversas){try{renderConversas(await b.pedir_conversas())}catch(e){renderConversas([])}}
+ else renderConversas([{id:0,titulo:'(demonstração) sem Python conectado',quando:'agora',total:0}]);
+}
+function abrirHist(abrir){const pop=$('#hist-pop');if(!pop)return;pop.hidden=!abrir;if(abrir)carregarHist()}
 const api={
  setState:s=>{demo=false;setState(s)},
  // O Python manda o NOME DA FERRAMENTA que esta rodando; a forma
@@ -148,7 +172,7 @@ const api={
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>nucleo.setLevel(v),
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
- setVozes,setVozAtual,setMudo,
+ setVozes,setVozAtual,setMudo,setConversas:renderConversas,limparLog,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
 
@@ -178,6 +202,9 @@ $('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;c
 // e inverte, para ficar sempre em sincronia com o que o Python mandou.
 $('#micmute').addEventListener('click',()=>{const b=$('#micmute');const novo=b.getAttribute('aria-pressed')!=='true';setMudo(novo);const br=bridge();if(br&&br.set_mudo)br.set_mudo(novo)});
 $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()});
+// Histórico: abre/fecha o painel; fora dele, fecha.
+$('#hist').addEventListener('click',e=>{e.stopPropagation();const pop=$('#hist-pop');abrirHist(!!(pop&&pop.hidden))});
+document.addEventListener('click',e=>{if(!e.target.closest('.hist-wrap'))abrirHist(false)});
 // O seletor e o NATIVO, do lado do Python: o <input type=file> do HTML
 // nao entrega o caminho no disco, e sem caminho o NEBELL nao consegue
 // editar o arquivo depois.

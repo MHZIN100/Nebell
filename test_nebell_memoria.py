@@ -903,5 +903,49 @@ class TestVozDownload(unittest.TestCase):
         self.assertTrue(chamadas[1] and chamadas[1].startswith("bytes=3-"))
 
 
+class TestHistorico(MemoriaTest):
+    """listar_conversas (painel de histórico) e ativar_conversa
+    (continuar uma conversa antiga)."""
+
+    def _conversa(self, *falas):
+        self.mem.iniciar_conversa("voz")
+        for papel, texto in falas:
+            self.mem.registrar_mensagem(papel, texto)
+        return self.mem.conversa_id
+
+    def test_listar_traz_as_antigas_menos_a_ativa(self):
+        c1 = self._conversa(("user", "primeira"))
+        c2 = self._conversa(("user", "segunda"))
+        ativa = self._conversa(("user", "atual"))
+
+        lista = self.mem.listar_conversas(limite=10)
+        ids = [c["id"] for c in lista]
+
+        self.assertIn(c1, ids)
+        self.assertIn(c2, ids)
+        self.assertNotIn(ativa, ids)          # a ativa fica de fora
+        self.assertEqual(ids, sorted(ids, reverse=True))   # mais nova antes
+
+    def test_listar_traz_mesmo_sem_resumo(self):
+        # Diferente de conversas_recentes, que só traz as resumidas.
+        self._conversa(("user", "sem resumo"))
+        self._conversa(("user", "atual"))
+        self.assertTrue(self.mem.listar_conversas(limite=10))
+
+    def test_ativar_conversa_existente(self):
+        alvo = self._conversa(("user", "oi"), ("assistant", "olá, senhor"))
+        self._conversa(("user", "outra"))      # muda a ativa
+
+        self.assertTrue(self.mem.ativar_conversa(alvo))
+        self.assertEqual(self.mem.conversa_id, alvo)
+        falas = [m["conteudo"] for m in self.mem.transcricao(alvo)]
+        self.assertEqual(falas, ["oi", "olá, senhor"])
+
+    def test_ativar_conversa_inexistente_nao_muda_nada(self):
+        atual = self._conversa(("user", "oi"))
+        self.assertFalse(self.mem.ativar_conversa(999999))
+        self.assertEqual(self.mem.conversa_id, atual)   # ativa intacta
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
