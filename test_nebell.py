@@ -7061,5 +7061,90 @@ class TestAvisaAJanelaOQueEstaFazendo(NebellTest):
         self.assertEqual(faltando, [], ", ".join(faltando))
 
 
+class TestConfigDoUsuario(unittest.TestCase):
+    """O nebell_config.json (opcional) sobrepoe os ajustes de voz sem
+    mexer no codigo, e nunca derruba o NEBELL quando vem torto."""
+
+    def setUp(self):
+        # Guarda os valores originais para restaurar no fim.
+        self._orig = {
+            n: getattr(J, n) for n in (
+                "USAR_XTTS", "XTTS_FALANTE", "USAR_EDGE", "EDGE_VOZ",
+                "USAR_KOKORO", "KOKORO_VOZ", "KOKORO_VELOCIDADE",
+                "AUTO_DOWNLOAD_VOICE", "CONFIG_FILE",
+            )
+        }
+        self.pasta = Path(tempfile.mkdtemp(prefix="nebell_cfg_"))
+
+    def tearDown(self):
+        for n, v in self._orig.items():
+            setattr(J, n, v)
+        shutil.rmtree(self.pasta, ignore_errors=True)
+
+    def _aplicar(self, conteudo):
+        arq = self.pasta / "nebell_config.json"
+        if isinstance(conteudo, (dict, list)):
+            arq.write_text(json.dumps(conteudo), encoding="utf-8")
+        else:
+            arq.write_text(conteudo, encoding="utf-8")
+        J.CONFIG_FILE = arq
+        return J._aplicar_config()
+
+    def test_sem_arquivo_nada_muda(self):
+        J.CONFIG_FILE = self.pasta / "nao_existe.json"
+        self.assertEqual(J._aplicar_config(), [])
+        self.assertFalse(J.USAR_XTTS)
+
+    def test_override_valido_e_aplicado(self):
+        self._aplicar({
+            "usar_xtts": True,
+            "edge_voz": "pt-BR-AntonioNeural",
+            "kokoro_velocidade": 1.3,
+        })
+        self.assertIs(J.USAR_XTTS, True)
+        self.assertEqual(J.EDGE_VOZ, "pt-BR-AntonioNeural")
+        self.assertEqual(J.KOKORO_VELOCIDADE, 1.3)
+
+    def test_json_quebrado_e_ignorado(self):
+        with mock.patch("builtins.print"):
+            ap = self._aplicar("{ isso nao e json }")
+        self.assertEqual(ap, [])
+        self.assertFalse(J.USAR_XTTS)          # padrao preservado
+
+    def test_tipos_errados_sao_ignorados(self):
+        # bool como texto, numero como bool, texto vazio: tudo descartado.
+        ap = self._aplicar({
+            "usar_xtts": "sim",
+            "kokoro_velocidade": True,
+            "edge_voz": "   ",
+        })
+        self.assertEqual(ap, [])
+        self.assertFalse(J.USAR_XTTS)
+        self.assertEqual(J.KOKORO_VELOCIDADE, 1.0)
+        self.assertEqual(J.EDGE_VOZ, "pt-BR-FranciscaNeural")
+
+    def test_chave_desconhecida_e_ajuda_ignoradas(self):
+        ap = self._aplicar({
+            "_ajuda": "texto", "coisa_inexistente": 1, "usar_kokoro": False,
+        })
+        self.assertEqual(ap, ["USAR_KOKORO=False"])
+        self.assertIs(J.USAR_KOKORO, False)
+
+    def test_exemplo_bate_com_os_padroes(self):
+        # O modelo versionado deve refletir os padroes de fabrica, senao
+        # quem copiar o exemplo muda o comportamento sem querer.
+        exemplo = Path(J.__file__).resolve().parent / "nebell_config.exemplo.json"
+
+        if not exemplo.is_file():
+            self.skipTest("sem nebell_config.exemplo.json ao lado")
+
+        dados = json.loads(exemplo.read_text(encoding="utf-8"))
+        self.assertEqual(dados["usar_xtts"], self._orig["USAR_XTTS"])
+        self.assertEqual(dados["edge_voz"], self._orig["EDGE_VOZ"])
+        self.assertEqual(dados["kokoro_voz"], self._orig["KOKORO_VOZ"])
+        self.assertEqual(dados["usar_edge"], self._orig["USAR_EDGE"])
+        self.assertEqual(dados["usar_kokoro"], self._orig["USAR_KOKORO"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

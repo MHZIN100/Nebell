@@ -16,6 +16,10 @@ backup/
 # Desta maquina, nao do projeto
 microfone.json
 
+# Ajustes do usuario: fica so na maquina dele (o modelo e o
+# nebell_config.exemplo.json, esse sim versionado).
+nebell_config.json
+
 # Pesados, baixados pelo instalador
 voices/
 whisper_models/

@@ -1,0 +1,34 @@
+{
+  "_ajuda": [
+    "Este e um MODELO de ajustes. Para usar: copie este arquivo para",
+    "'nebell_config.json' (na MESMA pasta) e edite os valores.",
+    "Sem o nebell_config.json, valem os padroes de fabrica e nada muda.",
+    "As chaves que comecam com _ sao SO explicacao; o NEBELL as ignora.",
+    "Reinicie o NEBELL depois de editar. Erro no arquivo? Ele e ignorado",
+    "e os padroes continuam valendo."
+  ],
+
+  "_ajuda_usar_xtts": "Voz XTTS offline de ALTA qualidade. So em maquina forte (16 GB+ de RAM) e depois de instalar com 'instalar.py --com-xtts'. Em maquina fraca trava. Padrao: false.",
+  "usar_xtts": false,
+
+  "_ajuda_xtts_falante": "Falante embutido do XTTS (quando usar_xtts=true). Ex.: 'Ana Florence'.",
+  "xtts_falante": "Ana Florence",
+
+  "_ajuda_usar_edge": "Voz online da Microsoft (precisa de internet), quase humana e leve. Anda em dupla com o Kokoro: com internet fala online, sem internet cai no Kokoro. Padrao: true.",
+  "usar_edge": true,
+
+  "_ajuda_edge_voz": "Qual voz da Microsoft usar. Femininas pt-BR: 'pt-BR-FranciscaNeural', 'pt-BR-ThalitaNeural'. Masculina: 'pt-BR-AntonioNeural'.",
+  "edge_voz": "pt-BR-FranciscaNeural",
+
+  "_ajuda_usar_kokoro": "Voz neural offline leve (reserva da online, roda na CPU). Padrao: true.",
+  "usar_kokoro": true,
+
+  "_ajuda_kokoro_voz": "Qual voz do Kokoro. Feminina pt-BR: 'pf_dora'. Masculinas: 'pm_alex', 'pm_santa'.",
+  "kokoro_voz": "pf_dora",
+
+  "_ajuda_kokoro_velocidade": "Velocidade da fala do Kokoro. 1.0 = normal; menor fala mais devagar.",
+  "kokoro_velocidade": 1.0,
+
+  "_ajuda_auto_baixar_voz": "Baixar a voz Piper (ultima reserva) automaticamente se faltar. Padrao: true.",
+  "auto_baixar_voz": true
+}

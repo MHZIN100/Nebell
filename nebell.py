@@ -232,6 +232,82 @@ KOKORO_VOZ = "pf_dora"
 KOKORO_VELOCIDADE = 1.0
 
 
+# ------------------------------------------------------------------
+# Ajustes do usuario (nebell_config.json) -- OPCIONAL.
+# Permite trocar a voz e ligar/desligar o XTTS SEM mexer no codigo.
+# Se o arquivo nao existir (o normal), valem os padroes acima e nada
+# muda. O modelo com explicacao fica em nebell_config.exemplo.json:
+# basta copia-lo para nebell_config.json e editar.
+# ------------------------------------------------------------------
+CONFIG_FILE = Path(__file__).resolve().parent / "nebell_config.json"
+
+# chave no JSON -> (nome do ajuste aqui no codigo, tipo esperado)
+#   "bool" = verdadeiro/falso ; "txt" = texto ; "num" = numero
+_CONFIG_CAMPOS = {
+    "usar_xtts": ("USAR_XTTS", "bool"),
+    "xtts_falante": ("XTTS_FALANTE", "txt"),
+    "usar_edge": ("USAR_EDGE", "bool"),
+    "edge_voz": ("EDGE_VOZ", "txt"),
+    "usar_kokoro": ("USAR_KOKORO", "bool"),
+    "kokoro_voz": ("KOKORO_VOZ", "txt"),
+    "kokoro_velocidade": ("KOKORO_VELOCIDADE", "num"),
+    "auto_baixar_voz": ("AUTO_DOWNLOAD_VOICE", "bool"),
+}
+
+
+def _aplicar_config():
+    """Le nebell_config.json (se existir) e sobrepoe os ajustes de voz.
+
+    Blindado: arquivo ausente, JSON invalido, chave desconhecida ou tipo
+    errado sao ignorados -- nesses casos valem os padroes. Devolve a
+    lista (texto) do que foi aplicado, so para registrar depois no log."""
+    if not CONFIG_FILE.is_file():
+        return []
+
+    try:
+        dados = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[Config] nebell_config.json tem erro e foi ignorado: {exc}")
+        return []
+
+    if not isinstance(dados, dict):
+        print("[Config] nebell_config.json ignorado: nao e um objeto JSON.")
+        return []
+
+    aplicados = []
+    g = globals()
+
+    for chave, valor in dados.items():
+        if chave.startswith("_"):          # _ajuda e afins: so documentacao
+            continue
+
+        campo = _CONFIG_CAMPOS.get(chave)
+        if campo is None:                  # chave que nao conhecemos: ignora
+            continue
+
+        nome, tipo = campo
+
+        if tipo == "bool":
+            if not isinstance(valor, bool):
+                continue
+        elif tipo == "txt":
+            if not isinstance(valor, str) or not valor.strip():
+                continue
+        else:                               # "num": numero, mas nunca bool
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                continue
+            valor = float(valor)
+
+        g[nome] = valor
+        aplicados.append(f"{nome}={valor!r}")
+
+    return aplicados
+
+
+# Aplicada JA na importacao, antes de qualquer preparar_voz usar os valores.
+_CONFIG_APLICADA = _aplicar_config()
+
+
 def descobrir_voz():
     """
     Acha o modelo de voz na pasta voices, na ordem de preferencia.
@@ -9951,6 +10027,12 @@ def main():
             nebell_log.iniciar_log()
         except Exception:
             pass
+
+    # Se o usuario tiver um nebell_config.json, mostra o que ele mudou
+    # (ja foi aplicado la na importacao). Vai para a tela e para o log.
+    if _CONFIG_APLICADA:
+        print("[Config] ajustes do nebell_config.json: "
+              + ", ".join(_CONFIG_APLICADA))
 
     # Voz, da mais natural para a mais garantida:
     #   XTTS (desligado por padrão: só em máquina forte)
