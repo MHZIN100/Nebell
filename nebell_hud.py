@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 10
+HUD_VERSAO = 11
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -511,20 +511,27 @@ button:hover{background:rgba(150,60,245,.2)}
    enche; a cor segue o nivel (azul/roxo/rosa). */
 .effort-wrap{position:relative;display:inline-flex}
 .effort-pop{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);z-index:60;
- background:var(--panel);border:1px solid var(--line);padding:10px 10px 8px;min-width:150px;
+ background:var(--panel);border:1px solid var(--line);padding:11px 12px 9px;width:234px;
  box-shadow:0 10px 34px rgba(0,0,0,.6)}
 .effort-pop[hidden]{display:none}
-.ep-titulo{font:600 9px Orbitron,sans-serif;letter-spacing:.28em;color:var(--dim);text-align:center;margin-bottom:9px}
-.ep-barra{display:flex;flex-direction:column;gap:5px;touch-action:none}
-.ep-stop{width:100%;text-align:center;padding:9px 10px;border:1px solid var(--line);background:transparent;
- color:var(--dim);font:500 11px Orbitron,sans-serif;letter-spacing:.06em;cursor:pointer;user-select:none;
- transition:background .12s,color .12s,border-color .12s}
-.ep-stop:hover{color:var(--text);border-color:var(--acc)}
-/* aceso (barra enchendo): cor conforme o nivel escolhido */
-.ep-barra[data-nivel="rapido"] .ep-stop.on{background:rgba(74,134,255,.18);border-color:#4a86ff;color:#cfe0ff}
-.ep-barra[data-nivel="normal"] .ep-stop.on{background:rgba(150,60,245,.2);border-color:var(--acc);color:#eadcff}
-.ep-barra[data-nivel="alto"]   .ep-stop.on{background:rgba(255,77,122,.18);border-color:#ff4d7a;color:#ffd0dc}
-.ep-stop.sel{box-shadow:inset 0 0 0 1px currentColor}
+.ep-titulo{font:600 9px Orbitron,sans-serif;letter-spacing:.28em;color:var(--dim);text-align:center}
+.ep-nome{font:700 12px Orbitron,sans-serif;letter-spacing:.3em;text-align:center;margin:4px 0 9px;transition:color .25s;color:#ffa23a}
+/* Pista horizontal: a bolinha corre entre 3 pontos e enche da esquerda
+   para a direita; o canvas dentro do preenchimento desenha a cena do
+   nível (azul calmo / laranja borbulhando / meteoros). */
+.ef-track{position:relative;height:34px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+ background:#07070e;cursor:pointer;touch-action:none;user-select:none}
+.ef-fill{position:absolute;left:0;top:0;height:100%;width:50%;overflow:hidden;
+ border-radius:18px 2px 2px 18px;transition:width .16s}
+.ef-fill canvas{position:absolute;left:0;top:0;height:100%;display:block}
+.ef-ball{position:absolute;top:50%;left:50%;width:22px;height:22px;border-radius:50%;
+ transform:translate(-50%,-50%);background:#fff;
+ box-shadow:0 0 10px rgba(255,255,255,.75),0 2px 6px rgba(0,0,0,.5);transition:left .16s;pointer-events:none}
+.ep-legenda{display:flex;justify-content:space-between;margin-top:7px;
+ font:500 8px Orbitron,sans-serif;letter-spacing:.03em;color:var(--dim)}
+.effort-pop[data-nivel="rapido"] .ep-nome{color:#6fb3ff}
+.effort-pop[data-nivel="normal"] .ep-nome{color:#ffa23a}
+.effort-pop[data-nivel="alto"]   .ep-nome{color:#c9b3ff}
 #halt{border-color:rgba(255,120,120,.5);color:#ff9b9b}
 #halt:hover{background:rgba(255,120,120,.15)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
@@ -567,11 +574,12 @@ select:focus{border-color:var(--acc)}
    </button>
    <div id="effort-pop" class="effort-pop" hidden>
     <div class="ep-titulo">ESFORÇO</div>
-    <div class="ep-barra" id="ep-barra" data-nivel="normal">
-     <button class="ep-stop" data-nivel="alto">Alta</button>
-     <button class="ep-stop" data-nivel="normal">Média</button>
-     <button class="ep-stop" data-nivel="rapido">Instantânea</button>
+    <div class="ep-nome" id="ep-nome">MÉDIA</div>
+    <div class="ef-track" id="ef-track" data-nivel="normal">
+     <div class="ef-fill" id="ef-fill"><canvas id="ef-canvas"></canvas></div>
+     <div class="ef-ball" id="ef-ball"></div>
     </div>
+    <div class="ep-legenda"><span>Instantânea</span><span>Média</span><span>Alta</span></div>
    </div>
   </div>
   <button id="halt" class="iconbtn" title="Interrompe a fala e a geração">
@@ -1705,47 +1713,81 @@ $('#file').addEventListener('click',async()=>{
  finally{bt.disabled=false}});
 // Botao ESFORCO: rapido -> normal -> alto -> rapido. Este e o unico
 // lugar que liga o "pensar antes de responder" do modelo (nivel alto).
-const NIVEIS_ESFORCO=['rapido','normal','alto']; // índice 0..2 = baixo..alto
+const NIVEIS_ESFORCO=['rapido','normal','alto'];
 const ROTULO_ESFORCO={rapido:'Instantânea',normal:'Média',alto:'Alta'};
 let nivelEsforco='normal';
-// O botão abre um mini-painel com uma barra de 3 níveis. A cor do botão
-// (data-nivel) e o tooltip seguem o nível; o conteúdo (SVG) não é tocado.
+
+// Elementos da pista horizontal.
+const efTrack=$('#ef-track'),efBall=$('#ef-ball'),efFill=$('#ef-fill'),
+      efCv=$('#ef-canvas'),efNome=$('#ep-nome'),efPop=$('#effort-pop');
+const EF_PONTOS={rapido:0.14,normal:0.5,alto:0.86};   // posição da bolinha
+const EF_NOMES={rapido:'INSTANTÂNEA',normal:'MÉDIA',alto:'ALTA'};
+let efCtx=efCv?efCv.getContext('2d'):null,efW=1,efH=1,efRaf=0,efArr=false,
+    efBolhas=[],efMeteoros=[],efEstrelas=[];
+
 function pintarEsforco(){const bt=$('#effort');if(bt){
   bt.dataset.nivel=nivelEsforco;
-  bt.title='Esforço: '+(ROTULO_ESFORCO[nivelEsforco]||nivelEsforco)
-   +'. Clique para abrir a barra.';}
+  bt.title='Esforço: '+(ROTULO_ESFORCO[nivelEsforco]||nivelEsforco)+'. Clique para abrir a barra.';}
  pintarPopover();}
-// A barra "enche" do nível escolhido para baixo (Instantânea no fim).
-function pintarPopover(){const barra=$('#ep-barra');if(!barra)return;
- barra.dataset.nivel=nivelEsforco;
- const sel=NIVEIS_ESFORCO.indexOf(nivelEsforco);
- barra.querySelectorAll('.ep-stop').forEach(st=>{
-  const i=NIVEIS_ESFORCO.indexOf(st.dataset.nivel);
-  st.classList.toggle('on', i>=0 && i<=sel);
-  st.classList.toggle('sel', i===sel);});}
+function pintarPopover(){
+ if(efPop)efPop.dataset.nivel=nivelEsforco;
+ if(efTrack)efTrack.dataset.nivel=nivelEsforco;
+ if(efNome)efNome.textContent=EF_NOMES[nivelEsforco]||nivelEsforco;
+ if(!efArr)efPos(EF_PONTOS[nivelEsforco]!=null?EF_PONTOS[nivelEsforco]:0.5);}
 function aplicarEsforco(nivel,avisarPython){
  if(NIVEIS_ESFORCO.indexOf(nivel)<0)return;
  const mudou=nivel!==nivelEsforco;
  nivelEsforco=nivel;pintarEsforco();
  if(avisarPython&&mudou){const b=bridge();if(b&&b.set_esforco)b.set_esforco(nivel);}}
-function abrirEsforco(abrir){const pop=$('#effort-pop');if(pop)pop.hidden=!abrir;}
-// Clicar no botão abre/fecha o painel.
-$('#effort').addEventListener('click',e=>{e.stopPropagation();
- const pop=$('#effort-pop');abrirEsforco(!!(pop&&pop.hidden));});
-// Barra: clicar escolhe um nível; arrastar passa por eles.
-(function(){const barra=$('#ep-barra');if(!barra)return;
- function nivelDoPonto(y){let alvo=null;
-  barra.querySelectorAll('.ep-stop').forEach(st=>{const r=st.getBoundingClientRect();
-   if(y>=r.top&&y<=r.bottom)alvo=st.dataset.nivel;});return alvo;}
- let arrastando=false;
- barra.addEventListener('pointerdown',e=>{arrastando=true;
-  try{barra.setPointerCapture(e.pointerId);}catch(_){}
-  const n=nivelDoPonto(e.clientY);if(n)aplicarEsforco(n,true);});
- barra.addEventListener('pointermove',e=>{if(!arrastando)return;
-  const n=nivelDoPonto(e.clientY);if(n)aplicarEsforco(n,true);});
- barra.addEventListener('pointerup',()=>{arrastando=false;});})();
-// Clicar fora fecha o painel.
+function abrirEsforco(abrir){const pop=$('#effort-pop');if(pop)pop.hidden=!abrir;ligarEsforcoAnim(!!abrir);}
+
+// --- bolinha e preenchimento ---
+function efPos(frac){if(efBall)efBall.style.left=(frac*100)+'%';if(efFill)efFill.style.width=(frac*100)+'%';}
+function efMedir(){if(!efTrack||!efCv)return;const r=efTrack.getBoundingClientRect();
+ efW=efCv.width=Math.max(1,Math.round(r.width));efH=efCv.height=Math.max(1,Math.round(r.height));
+ efCv.style.width=efW+'px';efCv.style.height=efH+'px';
+ efEstrelas=Array.from({length:36},()=>({x:Math.random()*efW,y:Math.random()*efH,r:Math.random()*1.1+0.3,f:Math.random()*6.28}));}
+
+// --- as três cenas animadas ---
+function efCena(t){if(!efCtx)return;efCtx.clearRect(0,0,efW,efH);
+ if(nivelEsforco==='rapido'){                       // azul calmo
+  const g=efCtx.createLinearGradient(0,0,efW,0);g.addColorStop(0,'#123a6b');g.addColorStop(1,'#2f7bd6');
+  efCtx.fillStyle=g;efCtx.fillRect(0,0,efW,efH);
+  const x=((t/1500)%1)*efW;const gg=efCtx.createLinearGradient(x-40,0,x+40,0);
+  gg.addColorStop(0,'rgba(255,255,255,0)');gg.addColorStop(.5,'rgba(255,255,255,.16)');gg.addColorStop(1,'rgba(255,255,255,0)');
+  efCtx.fillStyle=gg;efCtx.fillRect(0,0,efW,efH);
+ }else if(nivelEsforco==='normal'){                 // laranja borbulhando
+  const g=efCtx.createLinearGradient(0,0,0,efH);g.addColorStop(0,'#c8541a');g.addColorStop(1,'#eb922c');
+  efCtx.fillStyle=g;efCtx.fillRect(0,0,efW,efH);
+  if(Math.random()<0.32)efBolhas.push({x:Math.random()*efW,y:efH+4,r:Math.random()*3+1.5,v:Math.random()*0.6+0.4,w:Math.random()*6.28});
+  efBolhas=efBolhas.filter(b=>b.y>-6);
+  for(const b of efBolhas){b.y-=b.v;b.x+=Math.sin(b.w+t/300)*0.3;
+   efCtx.beginPath();efCtx.arc(b.x,b.y,b.r,0,6.28);efCtx.fillStyle='rgba(255,224,160,.55)';efCtx.fill();}
+ }else{                                             // céu estrelado + meteoros
+  efCtx.fillStyle='#0a0a1e';efCtx.fillRect(0,0,efW,efH);
+  for(const s of efEstrelas){const a=0.35+0.55*Math.abs(Math.sin(s.f+t/380));
+   efCtx.beginPath();efCtx.arc(s.x,s.y,s.r,0,6.28);efCtx.fillStyle='rgba(200,210,255,'+a+')';efCtx.fill();}
+  if(Math.random()<0.55)efMeteoros.push({x:Math.random()*efW*1.2-efW*0.1,y:-5,len:Math.random()*10+8,v:Math.random()*3+3});
+  efMeteoros=efMeteoros.filter(m=>m.y<efH+10&&m.x<efW+14);
+  for(const m of efMeteoros){m.x+=m.v;m.y+=m.v*1.1;
+   efCtx.strokeStyle='rgba(185,205,255,.9)';efCtx.lineWidth=1.3;
+   efCtx.beginPath();efCtx.moveTo(m.x,m.y);efCtx.lineTo(m.x-m.len,m.y-m.len*1.1);efCtx.stroke();}}}
+function efLaco(t){efCena(t||0);efRaf=requestAnimationFrame(efLaco);}
+function ligarEsforcoAnim(on){if(on){if(!efRaf){efMedir();efRaf=requestAnimationFrame(efLaco);}}
+ else if(efRaf){cancelAnimationFrame(efRaf);efRaf=0;}}
+
+// --- arrastar/clicar na pista ---
+function efFrac(e){const r=efTrack.getBoundingClientRect();return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));}
+function efNivel(frac){return frac<0.33?'rapido':frac<0.67?'normal':'alto';}
+if(efTrack){
+ efTrack.addEventListener('pointerdown',e=>{efArr=true;try{efTrack.setPointerCapture(e.pointerId);}catch(_){}
+  const f=efFrac(e);efPos(f);aplicarEsforco(efNivel(f),true);});
+ efTrack.addEventListener('pointermove',e=>{if(!efArr)return;const f=efFrac(e);efPos(f);aplicarEsforco(efNivel(f),true);});
+ efTrack.addEventListener('pointerup',()=>{efArr=false;pintarPopover();});
+}
+$('#effort').addEventListener('click',e=>{e.stopPropagation();const pop=$('#effort-pop');abrirEsforco(!!(pop&&pop.hidden));});
 document.addEventListener('click',e=>{if(!e.target.closest('.effort-wrap'))abrirEsforco(false);});
+window.addEventListener('resize',()=>{if(efRaf)efMedir();});
 pintarEsforco();
 // Esc também interrompe
 addEventListener('keydown',e=>{if(e.key==='Escape'){const b=bridge();if(b&&b.stop)b.stop()}});
