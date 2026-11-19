@@ -50,7 +50,6 @@ TESSERACT_PAGINA = "https://github.com/UB-Mannheim/tesseract/wiki"
 # sem aquele recurso.
 BLOCOS = [
     ("voz e conversa", ["piper-tts", "requests"]),
-    ("voz XTTS (alta qualidade)", ["torch", "torchaudio", "torchcodec", "six", "coqui-tts"]),
     ("voz online (Microsoft)", ["edge-tts", "soundfile"]),
     ("voz neural (Kokoro)", ["kokoro-onnx"]),
     ("escuta por voz", ["faster-whisper", "SpeechRecognition"]),
@@ -62,10 +61,16 @@ BLOCOS = [
                     "reportlab"]),
 ]
 
+# A voz XTTS e OPCIONAL e pesada (~2 GB de PyTorch + modelo de ~1.8 GB) e
+# trava em maquina de 8 GB de RAM, por isso NAO entra na instalacao
+# normal. So entra quando o instalador roda com --com-xtts (ou pelo
+# requirements-xtts.txt). Sem ela, a voz e a hibrida Microsoft + Kokoro.
+BLOCO_XTTS = ("voz XTTS (alta qualidade, opcional)",
+              ["torch", "torchaudio", "torchcodec", "six", "coqui-tts"])
+
 # modulo -> para que serve. Usado no relatorio do fim.
 CONFERIR = [
     ("piper", "voz (reserva)"),
-    ("TTS", "voz XTTS (alta qualidade)"),
     ("edge_tts", "voz online (Microsoft)"),
     ("soundfile", "conversão de áudio da voz online"),
     ("kokoro_onnx", "voz neural (Kokoro)"),
@@ -84,6 +89,10 @@ CONFERIR = [
     ("pptx", "PowerPoint"),
     ("reportlab", "criar PDF"),
 ]
+
+# So e conferido quando o XTTS foi pedido (--com-xtts). Fora disso, nao
+# aparece no relatorio como "FALTA", porque sua ausencia e o esperado.
+CONFERIR_XTTS = [("TTS", "voz XTTS (alta qualidade, opcional)")]
 
 ESSENCIAIS = {"piper", "requests"}
 
@@ -330,16 +339,19 @@ def criar_ambiente():
     return vpy
 
 
-def instalar_pacotes(vpy):
+def instalar_pacotes(vpy, com_xtts=False):
     passo("Pacotes do Python")
 
     roda([str(vpy), "-m", "pip", "install", "--upgrade", "pip"],
          mostrar=False, tempo=600)
 
+    # A XTTS so entra no fim e so quando pedida (--com-xtts): e pesada e
+    # vem desligada por padrao.
+    blocos = BLOCOS + ([BLOCO_XTTS] if com_xtts else [])
     falharam = []
 
-    for numero, (nome, pacotes) in enumerate(BLOCOS, start=1):
-        print(f"\n   [{numero}/{len(BLOCOS)}] {nome}: {', '.join(pacotes)}")
+    for numero, (nome, pacotes) in enumerate(blocos, start=1):
+        print(f"\n   [{numero}/{len(blocos)}] {nome}: {', '.join(pacotes)}")
 
         # Cada bloco é tentado mais de uma vez: numa conexão instável um
         # download do pip cai, mas o pip retoma o que já baixou, então
@@ -536,12 +548,16 @@ def baixar_voz(vpy):
     return False
 
 
-def baixar_voz_xtts(vpy):
+def baixar_voz_xtts(vpy, com_xtts=False):
     """
     Prepara a voz XTTS (alta qualidade): baixa o modelo (~1.8 GB), faz uma
-    síntese de teste e deixa a marca. Opcional, como o Tesseract: se não
-    entrar, a NEBELL usa o Kokoro. É o passo mais pesado do instalador.
+    síntese de teste e deixa a marca. Opcional e pesada: só roda quando
+    pedida com --com-xtts. Fora disso, a NEBELL usa a voz híbrida
+    Microsoft + Kokoro e este passo é pulado em silêncio.
     """
+    if not com_xtts:
+        return False
+
     passo("Voz XTTS (alta qualidade) — ~1.8 GB, pesada, só uma vez")
 
     marca = AQUI / "voices" / "xtts" / ".xtts_pronto"
@@ -705,20 +721,22 @@ def instalar_tesseract(pular):
     return False
 
 
-def conferir(vpy):
+def conferir(vpy, com_xtts=False):
     passo("Conferindo o que ficou pronto")
+
+    lista = CONFERIR + (CONFERIR_XTTS if com_xtts else [])
 
     codigo = (
         "import importlib.util as u\n"
         "mods = %r\n"
         "print('|'.join(m for m in mods if u.find_spec(m) is not None))"
-        % [m for m, _ in CONFERIR]
+        % [m for m, _ in lista]
     )
 
     ok, saida = roda([str(vpy), "-c", codigo], mostrar=False, tempo=120)
     presentes = set(saida.strip().split("|")) if ok and saida.strip() else set()
 
-    for modulo, para_que in CONFERIR:
+    for modulo, para_que in lista:
         marca = "ok     " if modulo in presentes else "FALTA  "
         print(f"   {marca}{para_que}")
 
@@ -748,10 +766,15 @@ def limpar_downloads():
 def main():
     sem_tesseract = "--sem-tesseract" in sys.argv
     so_conferir = "--so-conferir" in sys.argv
+    com_xtts = "--com-xtts" in sys.argv
 
     titulo("NEBELL — instalação completa")
     print(f" Pasta:  {AQUI}")
     print(f" Python: {sys.version.split()[0]}  ({sys.executable})")
+    if com_xtts:
+        print(" Modo:   COM a voz XTTS (pesada, ~2 GB) — por --com-xtts")
+    else:
+        print(" Modo:   padrão (voz Microsoft + Kokoro; sem a XTTS pesada)")
 
     if sys.version_info < (3, 9):
         print()
@@ -776,7 +799,7 @@ def main():
             print("\n Não há ambiente ainda. Rode sem --so-conferir.")
             return 1
 
-        conferir(vpy)
+        conferir(vpy, com_xtts=com_xtts)
         return 0
 
     vpy = criar_ambiente()
@@ -796,7 +819,7 @@ def main():
     for passada in range(1, MAX_PASSADAS + 1):
         recado.clear()
 
-        instalar_pacotes(vpy)
+        instalar_pacotes(vpy, com_xtts=com_xtts)
         tem_ollama = instalar_ollama(permitir_gui=(passada == 1))
 
         if tem_ollama:
@@ -806,9 +829,9 @@ def main():
 
         baixar_voz(vpy)
         baixar_voz_kokoro(vpy)
-        baixar_voz_xtts(vpy)
+        baixar_voz_xtts(vpy, com_xtts=com_xtts)
         instalar_tesseract(sem_tesseract)
-        presentes = conferir(vpy)
+        presentes = conferir(vpy, com_xtts=com_xtts)
 
         faltas = [t for ok, t in recado if not ok]
 

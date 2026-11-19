@@ -671,6 +671,34 @@ class TestMedidas(unittest.TestCase):
             "requirements.txt e instalar.py discordam",
         )
 
+    def test_o_requirements_xtts_bate_com_o_instalador(self):
+        """
+        A voz XTTS e opcional: suas dependencias ficam fora do BLOCOS
+        normal, no BLOCO_XTTS e no requirements-xtts.txt. Os dois tambem
+        podem sair do lugar um sem o outro, entao batem aqui.
+        """
+        arquivo = Path(I.__file__).resolve().parent / "requirements-xtts.txt"
+
+        if not arquivo.is_file():
+            self.skipTest("sem requirements-xtts.txt ao lado")
+
+        pedidos = {
+            linha.strip().lower()
+            for linha in arquivo.read_text(encoding="utf-8").splitlines()
+            if linha.strip() and not linha.lstrip().startswith("#")
+        }
+        instalados = {p.lower() for p in I.BLOCO_XTTS[1]}
+
+        self.assertEqual(
+            pedidos, instalados,
+            "requirements-xtts.txt e instalar.py discordam",
+        )
+
+        # E o XTTS nao pode estar tambem no BLOCOS normal (senao voltaria
+        # a ser instalado por padrao).
+        nucleo = {p.lower() for _, lista in I.BLOCOS for p in lista}
+        self.assertEqual(nucleo & instalados, set())
+
     def test_o_modelo_e_o_mesmo_do_nebell(self):
         # Se os dois saírem do lugar, o instalador baixa um modelo e o
         # NEBELL procura outro.

@@ -8,16 +8,12 @@
 piper-tts
 requests
 
-# voz XTTS (alta qualidade): a voz mais natural, 100% offline, porem
-# pesada. O coqui-tts NAO puxa o PyTorch sozinho, entao o torch e o
-# torchaudio vem explicitos aqui (versao CPU; a placa fica com o Ollama).
-# O torchcodec e exigido pelo PyTorch 2.9+ para ler/gravar audio. Modelo
-# de ~1.8 GB baixado pelo instalador. Se nao instalar, o NEBELL usa Kokoro.
-torch
-torchaudio
-torchcodec
-six
-coqui-tts
+# A voz XTTS (alta qualidade, offline, porem PESADA: ~2 GB de PyTorch +
+# modelo de ~1.8 GB) NAO fica mais aqui. Ela e opcional e vem desligada
+# por padrao (USAR_XTTS = False no nebell.py), porque trava em maquina de
+# 8 GB de RAM. Quem quiser instala a parte, com as dependencias do
+# arquivo requirements-xtts.txt (veja as instrucoes la dentro). Sem ela,
+# a voz padrao e a hibrida Microsoft (online) + Kokoro (offline).
 
 # voz online (Microsoft, Edge TTS): quase humana, de graca e leve, mas
 # precisa de internet. O soundfile converte o MP3 dela para WAV. Entra em
