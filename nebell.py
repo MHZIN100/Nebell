@@ -832,9 +832,21 @@ backup = None              # nebell_backup.Backup
 perfil_atual = PERFIL_PADRAO
 dev_mode = DEV_MODE
 history = []
-location_info = {}
-location_fetched_at = 0.0
-location_errors = []
+class Estado:
+    """Estado de execucao da NEBELL reunido num objeto, em vez de globais
+    soltas. Refatoracao em fatias (strangler): cada grupo coeso migra para
+    ca de uma vez, com os testes verdes antes e depois. Comecou pela
+    localizacao; os demais grupos entram um a um.
+    """
+
+    def __init__(self):
+        # Localizacao (de onde a pessoa esta), buscada sob demanda.
+        self.location_info = {}
+        self.location_fetched_at = 0.0
+        self.location_errors = []
+
+
+estado = Estado()
 
 stop_speaking_event = threading.Event()
 speaking_active = threading.Event()
@@ -3645,7 +3657,7 @@ quando o arquivo for coisa sua, de rascunho. Para criar PASTA use
 criar_pasta; escrever_arquivo cria arquivo de texto, não pasta.
 """
 
-    if location_info.get("cidade"):
+    if estado.location_info.get("cidade"):
         extra += (
             f"\nLOCALIZAÇÃO DO USUÁRIO: {describe_location()}. "
             f"Essa é a cidade dele. Use-a diretamente em clima, trânsito, "
@@ -4175,12 +4187,12 @@ PAISES_EM_PORTUGUES = {
 
 
 def describe_location():
-    pais = location_info.get("pais")
+    pais = estado.location_info.get("pais")
 
     if pais:
         pais = PAISES_EM_PORTUGUES.get(pais.strip().lower(), pais)
 
-    partes = [location_info.get("cidade"), location_info.get("regiao"), pais]
+    partes = [estado.location_info.get("cidade"), estado.location_info.get("regiao"), pais]
     return ", ".join(p for p in partes if p)
 
 
@@ -4191,17 +4203,16 @@ def detect_location(force=False):
     Nao e GPS: acerta a cidade ou a regiao, o que basta para clima,
     notícias e buscas locais. O resultado fica em cache por algumas horas.
     """
-    global location_info, location_fetched_at
 
     if not LOCATION_ENABLED:
         return {}
 
-    recente = time.time() - location_fetched_at < LOCATION_TTL_SECONDS
+    recente = time.time() - estado.location_fetched_at < LOCATION_TTL_SECONDS
 
-    if location_info and recente and not force:
-        return location_info
+    if estado.location_info and recente and not force:
+        return estado.location_info
 
-    location_errors.clear()
+    estado.location_errors.clear()
 
     for url in LOCATION_SERVICES:
         try:
@@ -4209,36 +4220,36 @@ def detect_location(force=False):
             resposta.raise_for_status()
             dados = resposta.json()
         except Exception as exc:
-            location_errors.append(f"{url.split('/')[2]}: {exc}")
+            estado.location_errors.append(f"{url.split('/')[2]}: {exc}")
             continue
 
         if dados.get("status") == "fail" or dados.get("success") is False:
-            location_errors.append(f"{url.split('/')[2]}: recusou a consulta")
+            estado.location_errors.append(f"{url.split('/')[2]}: recusou a consulta")
             continue
 
         info = extract_location_fields(dados)
 
         if not info.get("cidade"):
-            location_errors.append(f"{url.split('/')[2]}: resposta sem cidade")
+            estado.location_errors.append(f"{url.split('/')[2]}: resposta sem cidade")
             continue
 
-        location_info = info
-        location_fetched_at = time.time()
-        return location_info
+        estado.location_info = info
+        estado.location_fetched_at = time.time()
+        return estado.location_info
 
     if LOCATION_FALLBACK:
         partes = [p.strip() for p in LOCATION_FALLBACK.split(",")]
-        location_info = {
+        estado.location_info = {
             "cidade": partes[0],
             "regiao": partes[1] if len(partes) > 1 else None,
             "pais": partes[2] if len(partes) > 2 else None,
             "lat": None, "lon": None, "ip": None, "provedor": None,
             "origem": "configuração manual",
         }
-        location_fetched_at = time.time()
-        return location_info
+        estado.location_fetched_at = time.time()
+        return estado.location_info
 
-    return location_info
+    return estado.location_info
 
 
 def extract_location_fields(dados):
@@ -4295,7 +4306,7 @@ def ensure_location(texto):
     execução, e uma pergunta feita nos primeiros segundos chegava ao
     modelo sem a cidade, que entao pedia ela ao usuario.
     """
-    if not LOCATION_ENABLED or location_info.get("cidade"):
+    if not LOCATION_ENABLED or estado.location_info.get("cidade"):
         return
 
     if not LOCATION_DEPENDENT_RE.search(normalize(texto)):
@@ -4316,7 +4327,7 @@ def load_location_background():
                 "\n[Aviso] Não consegui descobrir sua localização pelo IP. "
                 "Escreva sua cidade em LOCATION_FALLBACK, no início do arquivo."
             )
-            for erro in location_errors[:3]:
+            for erro in estado.location_errors[:3]:
                 print(f"  - {erro}")
     except Exception as exc:
         print(f"\n[Aviso] Falha ao detectar a localização: {exc}")
@@ -9680,7 +9691,7 @@ def text_mode():
 
         if command in ("/local", "/localizacao", "/localização"):
             print(tool_minha_localizacao(atualizar="sim"))
-            for erro in location_errors[:4]:
+            for erro in estado.location_errors[:4]:
                 print(f"  - {erro}")
             refresh_system_prompt()
             continue
@@ -10100,7 +10111,7 @@ def coletar_estatisticas():
     else:
         dados["mic"] = "indisponível"
 
-    if location_info.get("cidade"):
+    if estado.location_info.get("cidade"):
         dados["location"] = describe_location()
 
     return dados

@@ -684,10 +684,10 @@ class TestInternet(NebellTest):
             self.assertIn("não abriu", J.tool_ler_pagina("https://x.com"))
 
     def test_clima_usa_a_cidade_do_usuario(self):
-        J.location_info.update({
+        J.estado.location_info.update({
             "cidade": "Cachoeira", "lat": -12.6, "lon": -38.96,
         })
-        J.location_fetched_at = time.time()
+        J.estado.location_fetched_at = time.time()
 
         with mock.patch.object(
             J.nebell_web, "clima",
@@ -703,10 +703,10 @@ class TestInternet(NebellTest):
             self.assertIn("Diga a cidade", J.tool_clima())
 
     def test_clima_de_outra_cidade(self):
-        J.location_info.update({
+        J.estado.location_info.update({
             "cidade": "Cachoeira", "lat": -12.6, "lon": -38.96,
         })
-        J.location_fetched_at = time.time()
+        J.estado.location_fetched_at = time.time()
 
         geo = {"results": [{"latitude": -23.5, "longitude": -46.6,
                             "name": "São Paulo"}]}
@@ -1566,8 +1566,8 @@ class TestSimbolosEEmojis(NebellTest):
 class TestLocalizacao(NebellTest):
     def setUp(self):
         super().setUp()
-        J.location_info.clear()
-        J.location_fetched_at = 0.0
+        J.estado.location_info.clear()
+        J.estado.location_fetched_at = 0.0
 
     def _resposta(self, dados):
         resposta = mock.Mock()
@@ -1611,8 +1611,8 @@ class TestLocalizacao(NebellTest):
     def test_sem_internet_nao_quebra(self):
         # O cache tem de ser limpo: sem isso, a localização descoberta
         # por um teste anterior (ou pela máquina real) mascara o caso.
-        J.location_info.clear()
-        J.location_fetched_at = 0.0
+        J.estado.location_info.clear()
+        J.estado.location_fetched_at = 0.0
 
         with mock.patch.object(
             J.requests, "get", side_effect=Exception("sem rede")
@@ -1639,13 +1639,13 @@ class TestLocalizacao(NebellTest):
         self.assertEqual(get.call_count, 2)
 
     def test_entra_no_prompt_do_sistema(self):
-        J.location_info.update({"cidade": "Cachoeira", "regiao": "Bahia", "pais": "Brasil"})
+        J.estado.location_info.update({"cidade": "Cachoeira", "regiao": "Bahia", "pais": "Brasil"})
         J.refresh_system_prompt()
         self.assertIn("Cachoeira, Bahia, Brasil", J.history[0]["content"])
 
     def test_atalho_responde_sem_o_modelo(self):
-        J.location_info.update({"cidade": "Cachoeira", "pais": "Brasil"})
-        J.location_fetched_at = time.time()
+        J.estado.location_info.update({"cidade": "Cachoeira", "pais": "Brasil"})
+        J.estado.location_fetched_at = time.time()
         resposta = J.local_fast_answer("Nebell, onde eu estou?")
         self.assertIn("Cachoeira", resposta)
 
@@ -1655,9 +1655,9 @@ class TestLocalizacaoNaHora(NebellTest):
 
     def setUp(self):
         super().setUp()
-        J.location_info.clear()
-        J.location_fetched_at = 0.0
-        J.location_errors.clear()
+        J.estado.location_info.clear()
+        J.estado.location_fetched_at = 0.0
+        J.estado.location_errors.clear()
 
     def _resposta(self, dados):
         resposta = mock.Mock()
@@ -1703,8 +1703,8 @@ class TestLocalizacaoNaHora(NebellTest):
             )
 
     def test_nao_busca_duas_vezes(self):
-        J.location_info.update({"cidade": "Salvador"})
-        J.location_fetched_at = time.time()
+        J.estado.location_info.update({"cidade": "Salvador"})
+        J.estado.location_fetched_at = time.time()
 
         with mock.patch.object(J.requests, "get") as get:
             J.ensure_location("como está o clima")
@@ -1754,8 +1754,8 @@ class TestLocalizacaoNaHora(NebellTest):
         with mock.patch.object(J.requests, "get", side_effect=Exception("timeout")):
             J.detect_location()
 
-        self.assertTrue(J.location_errors)
-        self.assertIn("timeout", J.location_errors[0])
+        self.assertTrue(J.estado.location_errors)
+        self.assertIn("timeout", J.estado.location_errors[0])
 
     def test_prompt_avisa_quando_nao_sabe(self):
         J.refresh_system_prompt()
@@ -1764,8 +1764,8 @@ class TestLocalizacaoNaHora(NebellTest):
 
 class TestRede(NebellTest):
     def test_info_rede(self):
-        J.location_info.update({"ip": "200.1.2.3", "provedor": "Provedor X"})
-        J.location_fetched_at = time.time()
+        J.estado.location_info.update({"ip": "200.1.2.3", "provedor": "Provedor X"})
+        J.estado.location_fetched_at = time.time()
 
         with mock.patch.object(J, "local_ip_address", return_value="192.168.0.10"), \
              mock.patch.object(J, "wifi_name", return_value="MinhaRede"), \
@@ -2185,10 +2185,10 @@ class TestReproducaoDeAudio(NebellTest):
         self.assertEqual(len(quadros), 220 * 2)
 
     def test_pais_em_portugues(self):
-        J.location_info.update({"cidade": "Cachoeira", "regiao": "Bahia",
+        J.estado.location_info.update({"cidade": "Cachoeira", "regiao": "Bahia",
                                 "pais": "Brazil"})
         self.assertEqual(J.describe_location(), "Cachoeira, Bahia, Brasil")
-        J.location_info.clear()
+        J.estado.location_info.clear()
 
 
 class TestInterrupcao(NebellTest):
