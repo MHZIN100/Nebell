@@ -1454,6 +1454,28 @@ class TestBigBang(unittest.TestCase):
         self.assertIn("dataset.bigbang", app)
 
 
+class TestEasterEggOcioso(unittest.TestCase):
+    """3.7: a ondulação discreta só pode disparar bem guardada -- parada,
+    em espera, mic mudo e fora de reduced-motion -- e usando só a API
+    pública (explodir), numa camada separada do laço."""
+
+    def setUp(self):
+        self.app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
+
+    def test_usa_so_a_api_publica_explodir(self):
+        self.assertIn("nucleo.explodir(", self.app)
+
+    def test_tem_todas_as_guardas(self):
+        # reduced-motion, demo, mic mudo, estado espera e tempo parado.
+        trecho = self.app[self.app.index("brincadeiraOciosa"):]
+        for guarda in ("reduce||demo", "aria-pressed", "espera",
+                       "180000"):
+            self.assertIn(guarda, trecho, guarda)
+
+    def test_atividade_rearma_o_relogio(self):
+        self.assertIn("marcarAtividade", self.app)
+
+
 class TestMarkdownSeguroFonte(unittest.TestCase):
     """Guard estático do renderizador de Markdown: a mensagem vem do
     MODELO, então o app.js nunca pode jogar texto do modelo em innerHTML.

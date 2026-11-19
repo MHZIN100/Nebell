@@ -134,7 +134,7 @@ function setVozAtual(ch){const sel=$('#vozSel');if(sel&&ch!=null&&ch!=='')sel.va
 function setMudo(on){const b=$('#micmute');if(!b)return;
  b.setAttribute('aria-pressed',on?'true':'false');
  b.title=on?'Microfone silenciado — clique para religar':'Silenciar o microfone';}
-function submit(text){text=text.trim();if(!text)return;addMessage('user',text);
+function submit(text){text=text.trim();if(!text)return;marcarAtividade();addMessage('user',text);
  const b=bridge();
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
  else if(api.onSubmit)api.onSubmit(text);
@@ -164,10 +164,10 @@ async function carregarHist(){
 }
 function abrirHist(abrir){const pop=$('#hist-pop');if(!pop)return;pop.hidden=!abrir;if(abrir)carregarHist()}
 const api={
- setState:s=>{demo=false;setState(s)},
+ setState:s=>{demo=false;marcarAtividade();setState(s)},
  // O Python manda o NOME DA FERRAMENTA que esta rodando; a forma
  // sai do mapa que ja existe no nebell.py.
- paraFerramenta:nome=>{demo=false;
+ paraFerramenta:nome=>{demo=false;marcarAtividade();
   if(nucleo.paraFerramenta(nome)){const n=nucleo.numeros;
    $('#state').textContent=n.rotulo;$('#sub').textContent=n.diz;
    document.body.dataset.state=FAMILIA[n.estado]||'trabalhando'}},
@@ -196,8 +196,27 @@ function daCarga(o){
 api.setStats=o=>{fake=false;_s(o);daCarga(o)};
 setInterval(()=>{if(fake)_s({cpu:15+Math.random()*40,ram:45+Math.random()*10,gpu:5+Math.random()*50,net:10+Math.random()*60,netLabel:'24 ms'})},1500);
 
+// 3.7 Easter eggs nas particulas: quando ela fica MUITO tempo parada --
+// em espera, microfone mudo e nada acontecendo -- de vez em quando uma
+// ondulacao discreta percorre a nuvem. Camada separada: so chama
+// explodir() (API publica), nunca toca no laco base. Desligado em
+// prefers-reduced-motion e enquanto o Python nao assumiu (demo).
+let ultimaAtividade=Date.now();
+function marcarAtividade(){ultimaAtividade=Date.now()}
+function brincadeiraOciosa(){
+ if(reduce||demo)return;
+ const b=$('#micmute');
+ if(!b||b.getAttribute('aria-pressed')!=='true')return;   // só com o mic mudo
+ const n=nucleo.numeros;
+ if(n.estado!=='espera'||n.viajando)return;                // só parada, em espera
+ if(Date.now()-ultimaAtividade<180000)return;              // 3 min sem nada
+ if(Math.random()<0.28)                                    // rara
+  nucleo.explodir((Math.random()-0.5)*0.5,(Math.random()-0.5)*0.5);
+}
+setInterval(brincadeiraOciosa,8000);
+
 // controles
-$('#txt').addEventListener('keydown',e=>{if(e.key==='Enter'){submit(e.target.value);e.target.value=''}});
+$('#txt').addEventListener('keydown',e=>{marcarAtividade();if(e.key==='Enter'){submit(e.target.value);e.target.value=''}});
 $('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
 // Trocar a voz pelo seletor do painel SISTEMA.
 $('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;const b=bridge();if(b&&b.set_voz)b.set_voz(v)});
