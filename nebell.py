@@ -807,6 +807,7 @@ busy_event = threading.Event()      # falando ou gerando: pode ser cortado
 cancel_event = threading.Event()    # o usuario mandou parar
 synthesis_config = None        # ajuste de voz do Piper, montado na abertura
 troca_de_voz = threading.Lock()
+mic_mudo = threading.Event()        # ligado = microfone silenciado pelo usuario
 audio_backend = "winsound_memory"
 _pyaudio = None
 _output_stream = None
@@ -1865,7 +1866,8 @@ def voice_barge_in_watcher():
     while True:
         try:
             if not (busy_event.is_set() and interaction_mode == "voice"
-                    and microphone_available() and not cancel_event.is_set()):
+                    and microphone_available() and not cancel_event.is_set()
+                    and not mic_mudo.is_set()):
                 time.sleep(0.1)
                 continue
 
@@ -2000,6 +2002,225 @@ def preparar_kokoro():
     except Exception as exc:
         print(f"[Voz] Kokoro indisponível ({exc}). Vou usar o Piper.")
         return None
+
+
+# ------------------------------------------------------------------
+# Troca de voz em tempo real, pelo seletor da janela (painel SISTEMA).
+# Monta a nova voz ANTES de pegar o cadeado troca_de_voz (pode carregar
+# modelo) e so entao faz a troca, rapida, protegida pelo mesmo cadeado
+# que a sintese usa -- nunca troca no meio de uma fala.
+# ------------------------------------------------------------------
+
+def _nome_voz_curto(voz):
+    return (voz or "").replace("pt-BR-", "").replace("Neural", "")
+
+
+def _genero(desc):
+    d = (desc or "").lower()
+    if "feminina" in d:
+        return "fem."
+    if "masculina" in d:
+        return "masc."
+    return ""
+
+
+def _montar_edge(voz):
+    if nebell_edge is None or not nebell_edge.biblioteca_ok():
+        return None
+    try:
+        return nebell_edge.VozEdge(voz=voz, log=print)
+    except Exception:
+        return None
+
+
+def _montar_kokoro(voz):
+    if nebell_kokoro is None or not nebell_kokoro.biblioteca_ok():
+        return None
+    try:
+        if not nebell_kokoro.modelo_presente(VOICES_DIR):
+            return None
+        return nebell_kokoro.VozKokoro(
+            VOICES_DIR, voz=voz, velocidade=KOKORO_VELOCIDADE, log=print
+        )
+    except Exception:
+        return None
+
+
+def vozes_disponiveis():
+    """Lista as vozes que a janela pode oferecer -- SO as que funcionam
+    nesta maquina. Cada item: {chave, rotulo, tipo}."""
+    itens = []
+
+    tem_edge = nebell_edge is not None and nebell_edge.biblioteca_ok()
+    tem_kokoro = (
+        nebell_kokoro is not None
+        and nebell_kokoro.biblioteca_ok()
+        and nebell_kokoro.modelo_presente(VOICES_DIR)
+    )
+
+    if tem_edge and tem_kokoro:
+        itens.append({
+            "chave": "hibrida",
+            "rotulo": "Microsoft + Kokoro (automática)",
+            "tipo": "auto",
+        })
+
+    if tem_edge:
+        for v, desc in nebell_edge.VOZES_PTBR.items():
+            g = _genero(desc)
+            itens.append({
+                "chave": f"edge:{v}",
+                "rotulo": f"Microsoft {_nome_voz_curto(v)} (online{', ' + g if g else ''})",
+                "tipo": "online",
+            })
+
+    if tem_kokoro:
+        for v, desc in nebell_kokoro.VOZES_PTBR.items():
+            g = _genero(desc)
+            itens.append({
+                "chave": f"kokoro:{v}",
+                "rotulo": f"Kokoro {v} (offline{', ' + g if g else ''})",
+                "tipo": "offline",
+            })
+
+    # Piper: so se houver um modelo instalado (ultima reserva offline).
+    try:
+        if PiperVoice is not None and descobrir_voz().exists():
+            itens.append({
+                "chave": "piper",
+                "rotulo": "Piper (offline, reserva)",
+                "tipo": "offline",
+            })
+    except Exception:
+        pass
+
+    return itens
+
+
+def _chave_voz_atual():
+    """Qual chave de voz corresponde ao que esta tocando agora."""
+    v = voz_neural
+
+    if v is None:
+        return "piper" if voice is not None else ""
+
+    if nebell_edge is not None:
+        if isinstance(v, nebell_edge.VozHibrida):
+            return "hibrida"
+        if isinstance(v, nebell_edge.VozEdge):
+            return f"edge:{getattr(v, 'voz', '')}"
+
+    klass = getattr(nebell_kokoro, "VozKokoro", None)
+    if klass is not None and isinstance(v, klass):
+        return f"kokoro:{getattr(v, 'voz', '')}"
+
+    return ""
+
+
+def _salvar_voz_no_config(chave):
+    """Grava a escolha de voz no nebell_config.json, para valer no
+    proximo arranque. Nao estoura: so avisa se nao der para gravar."""
+    modo, _, arg = chave.partition(":")
+
+    ajustes = {"usar_xtts": False}
+    if modo == "hibrida":
+        ajustes.update(usar_edge=True, usar_kokoro=True)
+    elif modo == "edge":
+        ajustes.update(usar_edge=True, usar_kokoro=False, edge_voz=arg or EDGE_VOZ)
+    elif modo == "kokoro":
+        ajustes.update(usar_edge=False, usar_kokoro=True, kokoro_voz=arg or KOKORO_VOZ)
+    elif modo == "piper":
+        ajustes.update(usar_edge=False, usar_kokoro=False)
+    else:
+        return
+
+    try:
+        atual = {}
+        if CONFIG_FILE.is_file():
+            try:
+                atual = json.loads(CONFIG_FILE.read_text(encoding="utf-8")) or {}
+            except Exception:
+                atual = {}
+        if not isinstance(atual, dict):
+            atual = {}
+        atual.update(ajustes)
+        CONFIG_FILE.write_text(
+            json.dumps(atual, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:
+        print(f"[Config] Não consegui salvar a escolha de voz: {exc}")
+
+
+def trocar_voz(chave):
+    """Troca a voz em tempo real, a pedido da janela. Devolve (ok, msg)."""
+    global voz_neural, VOZ_ROTULO, voice, VOICE_MODEL
+
+    chave = (chave or "").strip()
+    modo, _, arg = chave.partition(":")
+
+    if chave and chave == _chave_voz_atual():
+        return True, f"Já estou falando com {VOZ_ROTULO}."
+
+    nova = None
+    novo_piper = None
+    novo_modelo = None
+    rotulo = None
+
+    try:
+        if modo == "hibrida":
+            on = _montar_edge(EDGE_VOZ)
+            off = _montar_kokoro(KOKORO_VOZ)
+            if on is not None and off is not None:
+                nova = nebell_edge.VozHibrida(on, off, log=print)
+                rotulo = nova.rotulo()
+        elif modo == "edge":
+            on = _montar_edge(arg or EDGE_VOZ)
+            if on is not None:
+                nova = on
+                rotulo = f"Microsoft {_nome_voz_curto(on.voz)} · online"
+        elif modo == "kokoro":
+            off = _montar_kokoro(arg or KOKORO_VOZ)
+            if off is not None:
+                nova = off
+                rotulo = f"Kokoro · {off.voz}"
+        elif modo == "piper":
+            if PiperVoice is None:
+                return False, "O Piper não está instalado nesta máquina."
+            novo_modelo = descobrir_voz()
+            if not novo_modelo.exists():
+                return False, "A voz Piper não está instalada nesta máquina."
+            novo_piper = PiperVoice.load(str(novo_modelo))
+            rotulo = f"Piper · {novo_modelo.parent.name}"
+        else:
+            return False, "Opção de voz desconhecida."
+    except Exception as exc:
+        return False, f"Não consegui preparar essa voz: {exc}"
+
+    if modo != "piper" and nova is None:
+        return False, "Essa voz não está disponível nesta máquina."
+
+    with troca_de_voz:
+        if modo == "piper":
+            voice = novo_piper
+            VOICE_MODEL = novo_modelo
+            build_synthesis_config()
+            voz_neural = None
+        else:
+            voz_neural = nova
+        VOZ_ROTULO = rotulo
+        _filler_cache.clear()          # o cache estava na voz antiga
+
+    _salvar_voz_no_config(chave)
+
+    if hud is not None:
+        try:
+            hud.set_stats(voice=rotulo)
+            hud.set_voz_atual(chave)
+        except Exception:
+            nebell_log and nebell_log.engolido("hud: refletir troca de voz")
+
+    print(f"\n[Voz] Trocada para {rotulo}.")
+    return True, f"Pronto, agora falo com a voz: {rotulo}."
 
 
 def garantir_voz():
@@ -9342,6 +9563,32 @@ def hud_set_esforco(nivel):
     print(f"\n[Esforço] {nivel}")
 
 
+def hud_set_voz(chave):
+    """O seletor de voz da janela (painel SISTEMA)."""
+    ok, mensagem = trocar_voz(chave)
+    ui_message("nebell", mensagem)
+
+
+def hud_set_mudo(ligado):
+    """O botão de silenciar o microfone, na janela."""
+    if ligado:
+        mic_mudo.set()
+        ui_state("idle")
+        print("\n[Microfone] Silenciado pelo usuário.")
+        ui_message("nebell",
+                   "Microfone silenciado. É só clicar de novo para religar.")
+    else:
+        mic_mudo.clear()
+        print("\n[Microfone] Religado pelo usuário.")
+        ui_message("nebell", "Microfone religado, estou ouvindo de novo.")
+
+    if hud is not None:
+        try:
+            hud.mostrar_mudo(mic_mudo.is_set())
+        except Exception:
+            nebell_log and nebell_log.engolido("hud: refletir mudo")
+
+
 def hud_ready():
     """A pagina abriu: manda o estado inicial de uma vez."""
     atualizar_estatisticas(uma_vez=True)
@@ -9351,6 +9598,13 @@ def hud_ready():
 
     hud.set_esforco_nivel(esforco_atual[0])
     hud.set_stats(voice=VOZ_ROTULO)
+
+    # Seletor de voz (só as vozes que funcionam aqui) e estado do mudo.
+    try:
+        hud.set_vozes(vozes_disponiveis(), _chave_voz_atual())
+        hud.mostrar_mudo(mic_mudo.is_set())
+    except Exception:
+        nebell_log and nebell_log.engolido("hud: estado inicial de voz/mudo")
 
     ui_state("idle")
     ui_message("nebell", SAUDACAO)
@@ -9368,6 +9622,13 @@ def voice_listen_loop():
 
     while not shutdown_event.is_set():
         try:
+            # Microfone silenciado pelo usuário (botão de mudo): não
+            # escuta nada enquanto estiver assim. O texto digitado segue
+            # funcionando normalmente.
+            if mic_mudo.is_set():
+                time.sleep(0.25)
+                continue
+
             # Nao escuta enquanto ele fala nem logo depois: o microfone
             # capta o alto-falante e ele respondia a si mesmo.
             if busy_event.is_set() or falando_agora.is_set():
@@ -9622,6 +9883,8 @@ def run_hud_mode():
     hud.on_set_mic = hud_set_mic
     hud.on_stop = hud_stop
     hud.on_set_esforco = hud_set_esforco
+    hud.on_set_voz = hud_set_voz
+    hud.on_set_mudo = hud_set_mudo
     hud.on_ready = hud_ready
 
     if not hud.create():

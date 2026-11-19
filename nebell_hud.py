@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 13
+HUD_VERSAO = 14
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -67,6 +67,8 @@ class HudBridge:
         self.on_ready = None
         self.on_files = None
         self.on_set_esforco = None
+        self.on_set_voz = None
+        self.on_set_mudo = None
 
         self._pending = []
         self._lock = threading.Lock()
@@ -108,6 +110,28 @@ class HudBridge:
                 threading.Thread(
                     target=bridge.on_set_esforco, args=(str(nivel),),
                     daemon=True,
+                ).start()
+
+            return True
+
+        def set_voz(self, chave):
+            """O seletor de voz da pagina: muda a voz em tempo real."""
+            bridge = self._bridge
+
+            if bridge.on_set_voz:
+                threading.Thread(
+                    target=bridge.on_set_voz, args=(str(chave),), daemon=True
+                ).start()
+
+            return True
+
+        def set_mudo(self, ligado):
+            """O botao de silenciar o microfone, na pagina."""
+            bridge = self._bridge
+
+            if bridge.on_set_mudo:
+                threading.Thread(
+                    target=bridge.on_set_mudo, args=(bool(ligado),), daemon=True
                 ).start()
 
             return True
@@ -415,6 +439,18 @@ class HudBridge:
     def set_mics(self, dispositivos, atual=None):
         self.call("setMics", dispositivos, atual)
 
+    def set_vozes(self, lista, atual=None):
+        """Preenche o seletor de voz do painel SISTEMA."""
+        self.call("setVozes", lista, atual)
+
+    def set_voz_atual(self, chave):
+        """Marca no seletor qual voz esta em uso agora."""
+        self.call("setVozAtual", str(chave or ""))
+
+    def mostrar_mudo(self, ligado):
+        """Reflete na janela se o microfone esta silenciado."""
+        self.call("setMudo", bool(ligado))
+
     def notice(self, texto):
         self.add_message("nebell", texto)
 
@@ -543,6 +579,14 @@ button:hover{background:rgba(150,60,245,.2)}
 #halt:hover{background:rgba(255,120,120,.15)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
 select:focus{border-color:var(--acc)}
+/* Caixa de seleção de voz no painel SISTEMA, no espaço livre abaixo das
+   estatísticas. Ocupa a largura toda do painel. */
+.vozpick{margin-top:6px}
+.vozpick label{display:block;font-size:10px;letter-spacing:.2em;color:var(--dim);margin-bottom:5px}
+.vozpick select{width:100%;max-width:none;padding:9px 8px}
+/* Botão de silenciar o microfone: quando ligado (silenciado), fica
+   vermelho, como o botão de parar. */
+#micmute[aria-pressed="true"]{border-color:#ff4d7a;color:#ff9b9b;background:rgba(255,77,122,.12)}
 #demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
 @media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
@@ -562,6 +606,10 @@ select:focus{border-color:var(--acc)}
    <div class="stat"><div><span>RECONHECIMENTO</span><span id="stt">--</span></div></div>
    <div class="stat"><div><span>MICROFONE</span><span id="micV">--</span></div></div>
    <div class="stat"><div><span>LOCAL</span><span id="loc">--</span></div></div>
+   <div class="vozpick">
+    <label for="vozSel">MODELO DE VOZ</label>
+    <select id="vozSel"><option value="">—</option></select>
+   </div>
   </section>
   <section class="panel conversa"><h2>CONVERSA</h2><div id="log"></div></section>
   <aside class="hudbox"><canvas id="hud"></canvas><div id="state">EM ESPERA</div><div id="sub">DIGA "NEBELL" PARA COMEÇAR</div><div id="work"></div></aside>
@@ -572,6 +620,9 @@ select:focus{border-color:var(--acc)}
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg>
    <select id="mic"><option value="auto">MICROFONE: AUTOMÁTICO</option></select>
   </label>
+  <button id="micmute" class="iconbtn" title="Silenciar o microfone" aria-pressed="false">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="3" y1="3" x2="21" y2="21" stroke-width="2.2"/></svg>
+  </button>
   <button id="file" class="iconbtn" title="Enviar um arquivo ou imagem para o NEBELL">
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
   </button>
@@ -1661,6 +1712,18 @@ function setMics(list,current){const sel=$('#mic');if(!Array.isArray(list))retur
 function atualizarTituloMic(){const sel=$('#mic'),btn=$('#micbtn');if(!sel||!btn)return;
  const op=sel.options[sel.selectedIndex];const t=op?op.textContent:'';
  btn.title=t?('Microfone: '+t):'Microfone de entrada'}
+// Seletor de voz: o Python manda a lista (só as vozes que funcionam
+// nesta máquina) e qual está em uso. Trocar aqui muda a voz na hora.
+function setVozes(list,atual){const sel=$('#vozSel');if(!sel||!Array.isArray(list))return;
+ sel.textContent='';
+ for(const v of list){const o=document.createElement('option');o.value=v.chave||'';o.textContent=v.rotulo||v.chave||'voz';sel.append(o)}
+ if(atual!=null&&atual!=='')sel.value=String(atual);}
+function setVozAtual(ch){const sel=$('#vozSel');if(sel&&ch!=null&&ch!=='')sel.value=String(ch)}
+// Botão de silenciar o microfone. O Python é quem manda o estado de
+// verdade (inclusive na abertura), então o visual segue o aria-pressed.
+function setMudo(on){const b=$('#micmute');if(!b)return;
+ b.setAttribute('aria-pressed',on?'true':'false');
+ b.title=on?'Microfone silenciado — clique para religar':'Silenciar o microfone';}
 function submit(text){text=text.trim();if(!text)return;addMessage('user',text);
  const b=bridge();
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
@@ -1678,6 +1741,7 @@ const api={
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>nucleo.setLevel(v),
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
+ setVozes,setVozAtual,setMudo,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
 
@@ -1701,6 +1765,11 @@ setInterval(()=>{if(fake)_s({cpu:15+Math.random()*40,ram:45+Math.random()*10,gpu
 // controles
 $('#txt').addEventListener('keydown',e=>{if(e.key==='Enter'){submit(e.target.value);e.target.value=''}});
 $('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
+// Trocar a voz pelo seletor do painel SISTEMA.
+$('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;const b=bridge();if(b&&b.set_voz)b.set_voz(v)});
+// Silenciar / religar o microfone. Lê o estado atual do próprio botão
+// e inverte, para ficar sempre em sincronia com o que o Python mandou.
+$('#micmute').addEventListener('click',()=>{const b=$('#micmute');const novo=b.getAttribute('aria-pressed')!=='true';setMudo(novo);const br=bridge();if(br&&br.set_mudo)br.set_mudo(novo)});
 $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()});
 // O seletor e o NATIVO, do lado do Python: o <input type=file> do HTML
 // nao entrega o caminho no disco, e sem caminho o NEBELL nao consegue

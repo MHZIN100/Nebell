@@ -7130,6 +7130,43 @@ class TestConfigDoUsuario(unittest.TestCase):
         self.assertEqual(ap, ["USAR_KOKORO=False"])
         self.assertIs(J.USAR_KOKORO, False)
 
+    def test_salvar_voz_persiste_e_recarrega(self):
+        # A escolha de voz salva pelo seletor da janela tem de voltar
+        # igual quando o config for lido no próximo arranque.
+        arq = self.pasta / "nebell_config.json"
+        J.CONFIG_FILE = arq
+
+        # Escolher Kokoro masculino deve desligar o edge e gravar a voz.
+        J._salvar_voz_no_config("kokoro:pm_alex")
+        self.assertTrue(arq.is_file())
+
+        dados = json.loads(arq.read_text(encoding="utf-8"))
+        self.assertEqual(dados["usar_kokoro"], True)
+        self.assertEqual(dados["usar_edge"], False)
+        self.assertEqual(dados["kokoro_voz"], "pm_alex")
+        self.assertEqual(dados["usar_xtts"], False)
+
+        # E o carregador aplica de volta exatamente isso.
+        J.USAR_EDGE = True
+        J.USAR_KOKORO = True
+        J.KOKORO_VOZ = "pf_dora"
+        J._aplicar_config()
+        self.assertFalse(J.USAR_EDGE)
+        self.assertTrue(J.USAR_KOKORO)
+        self.assertEqual(J.KOKORO_VOZ, "pm_alex")
+
+    def test_salvar_voz_preserva_outras_chaves(self):
+        # Salvar a voz não pode apagar outros ajustes do usuário.
+        arq = self.pasta / "nebell_config.json"
+        arq.write_text(json.dumps({"kokoro_velocidade": 1.4, "_ajuda": "oi"}),
+                       encoding="utf-8")
+        J.CONFIG_FILE = arq
+        J._salvar_voz_no_config("hibrida")
+        dados = json.loads(arq.read_text(encoding="utf-8"))
+        self.assertEqual(dados["kokoro_velocidade"], 1.4)   # preservado
+        self.assertEqual(dados["_ajuda"], "oi")             # preservado
+        self.assertTrue(dados["usar_edge"] and dados["usar_kokoro"])
+
     def test_exemplo_bate_com_os_padroes(self):
         # O modelo versionado deve refletir os padroes de fabrica, senao
         # quem copiar o exemplo muda o comportamento sem querer.
