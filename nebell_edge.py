@@ -161,6 +161,16 @@ class VozHibrida:
         self._proxima_tentativa = 0.0
         self._modo = None              # True=online, False=offline, None=indefinido
 
+    def rotulo(self):
+        """Rótulo para o painel, dizendo o modo atual (online/offline)."""
+        nome = (getattr(self.online, "voz", "") or "")
+        nome = nome.replace("pt-BR-", "").replace("Neural", "")
+        if self._modo is True:
+            return f"Microsoft {nome} · online"
+        if self._modo is False:
+            return "Kokoro · offline"
+        return f"Microsoft {nome} + Kokoro"
+
     def _avisar(self, online, detalhe=""):
         if self._modo is online:
             return

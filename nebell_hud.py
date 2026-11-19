@@ -35,7 +35,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 12
+HUD_VERSAO = 13
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -1727,7 +1727,8 @@ let nivelEsforco='normal';
 // Elementos da pista horizontal.
 const efTrack=$('#ef-track'),efBall=$('#ef-ball'),efFill=$('#ef-fill'),
       efCv=$('#ef-canvas'),efNome=$('#ep-nome'),efPop=$('#effort-pop');
-const EF_PONTOS={rapido:0.14,normal:0.5,alto:0.86};   // posição da bolinha
+const EF_PONTOS={rapido:0,normal:0.5,alto:1};   // 0=esquerda, 1=direita (cheio)
+const EF_R=11;                                  // raio da bolinha (px)
 const EF_NOMES={rapido:'INSTANTÂNEA',normal:'MÉDIA',alto:'ALTA'};
 let efCtx=efCv?efCv.getContext('2d'):null,efW=1,efH=1,efRaf=0,efArr=false,
     efBolhas=[],efMeteoros=[],efEstrelas=[];
@@ -1746,10 +1747,18 @@ function aplicarEsforco(nivel,avisarPython){
  const mudou=nivel!==nivelEsforco;
  nivelEsforco=nivel;pintarEsforco();
  if(avisarPython&&mudou){const b=bridge();if(b&&b.set_esforco)b.set_esforco(nivel);}}
-function abrirEsforco(abrir){const pop=$('#effort-pop');if(pop)pop.hidden=!abrir;ligarEsforcoAnim(!!abrir);}
+function abrirEsforco(abrir){const pop=$('#effort-pop');if(pop)pop.hidden=!abrir;
+ ligarEsforcoAnim(!!abrir);if(abrir)pintarPopover();}  // repinta com a largura já visível
 
 // --- bolinha e preenchimento ---
-function efPos(frac){if(efBall)efBall.style.left=(frac*100)+'%';if(efFill)efFill.style.width=(frac*100)+'%';}
+// Posiciona em pixels levando o raio da bolinha em conta: assim no 0 ela
+// fica colada na esquerda e no 1 colada na direita (sem vazar), e o
+// preenchimento vai até a borda direita dela — no Alta a barra enche 100%.
+function efPos(frac){if(!efTrack)return;
+ const w=efTrack.clientWidth; if(!w)return;
+ const cx=EF_R+frac*(w-2*EF_R);
+ if(efBall)efBall.style.left=cx+'px';
+ if(efFill)efFill.style.width=Math.min(w,cx+EF_R)+'px';}
 function efMedir(){if(!efTrack||!efCv)return;const r=efTrack.getBoundingClientRect();
  efW=efCv.width=Math.max(1,Math.round(r.width));efH=efCv.height=Math.max(1,Math.round(r.height));
  efCv.style.width=efW+'px';efCv.style.height=efH+'px';

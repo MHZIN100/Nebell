@@ -9496,6 +9496,15 @@ def atualizar_estatisticas(uma_vez=False):
                     dados["netLabel"] = "sem rede"
                     dados["net"] = 0
 
+            # Rótulo da voz ao vivo: a híbrida diz se está online ou
+            # offline agora. Corrige também o display que às vezes ficava
+            # preso em "Piper".
+            if voz_neural is not None and hasattr(voz_neural, "rotulo"):
+                try:
+                    dados["voice"] = voz_neural.rotulo()
+                except Exception:
+                    pass
+
             hud.set_stats(**dados)
             primeira = False
 
