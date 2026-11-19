@@ -14,8 +14,10 @@ import atexit
 import gc
 import io
 import json
+import os
 import queue
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -4459,7 +4461,13 @@ def tool_abrir_programa(nome):
 
     if chave is not None:
         try:
-            subprocess.Popen(comando, shell=True)
+            # SEGURANÇA: 'comando' vem SEMPRE do dicionário fixo APPS (lista
+            # branca interna, não de entrada do usuário/modelo), então não há
+            # injeção aqui. O shell=True é necessário porque vários atalhos
+            # usam o 'start' do cmd (ex.: "start chrome", "start ms-settings:")
+            # para resolver apps via App Paths. Não trocar sem testar o
+            # lançamento real no Windows.
+            subprocess.Popen(comando, shell=True)  # noqa: S602 (allowlist fixa)
             return f"Abri o {chave}."
         except Exception as exc:
             return f"Não consegui abrir o {chave}: {exc}"
@@ -5419,15 +5427,26 @@ def tool_abrir_executavel(caminho, argumentos="", como_admin=None):
 
     try:
         if admin and IS_WINDOWS:
-            lista = f"-ArgumentList '{extras}'" if extras else ""
-            script = (
-                f"Start-Process -FilePath '{caminho_final}' {lista} -Verb RunAs"
-            )
+            # Escapa aspas simples (injeção via caminho/argumentos) e passa
+            # os argumentos como um array do PowerShell, não como string.
+            cf = caminho_final.replace("'", "''")
+
+            if extras:
+                args_ps = ",".join(
+                    "'" + a.replace("'", "''") + "'" for a in shlex.split(extras)
+                )
+                lista = f"-ArgumentList {args_ps}"
+            else:
+                lista = ""
+
+            script = f"Start-Process -FilePath '{cf}' {lista} -Verb RunAs"
             subprocess.Popen(
                 ["powershell", "-NoProfile", "-Command", script], shell=False
             )
         elif extras:
-            subprocess.Popen(f'"{caminho_final}" {extras}', shell=True)
+            # Sem shell: o executável e os argumentos vão como lista, então
+            # nada em 'extras' é interpretado por um shell (sem injeção).
+            subprocess.Popen([caminho_final, *shlex.split(extras)], shell=False)
         else:
             subprocess.Popen([caminho_final], shell=False)
 
@@ -5548,7 +5567,7 @@ def tool_bluetooth(acao="status", dispositivo=None):
         return conectar_bluetooth(dispositivo, ligar)
 
     if acao in ("configuracoes", "abrir", "painel"):
-        subprocess.Popen("start ms-settings:bluetooth", shell=True)
+        os.startfile("ms-settings:bluetooth")
         return "Abri as configurações de Bluetooth."
 
     return (
@@ -5644,7 +5663,7 @@ try {{
         erro = str(exc)
 
     # Caminho 3: deixa na mao do usuario, com a tela certa aberta.
-    subprocess.Popen("start ms-settings:bluetooth", shell=True)
+    os.startfile("ms-settings:bluetooth")
     return (
         f"Não consegui {palavra} o Bluetooth por conta própria "
         f"({erro or 'o Windows não permitiu'}). "
@@ -5792,7 +5811,7 @@ def tool_tocar_musica(busca, servico="spotify"):
 
         try:
             if IS_WINDOWS:
-                subprocess.Popen(f'start "" "{url}"', shell=True)
+                os.startfile(url)        # abre o URI (spotify:) sem passar por shell
             else:
                 webbrowser.open(url)
             return (
