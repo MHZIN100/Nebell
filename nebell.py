@@ -258,6 +258,7 @@ _CONFIG_CAMPOS = {
     "personalidade_custom": ("PERSONALIDADE_CUSTOM", "txt"),
     "ociosidade_min": ("OCIOSIDADE_MIN", "num"),
     "perfil": ("PERFIL_PADRAO", "txt"),
+    "big_bang": ("BIG_BANG", "bool"),
 }
 
 
@@ -662,6 +663,12 @@ PERSONALIDADE_CUSTOM = ""
 # keep_alive do perfil -- este só é mais rápido e determinístico.
 # Ajustável no nebell_config.json (ociosidade_min).
 OCIOSIDADE_MIN = 10
+
+# Animação de abertura da janela (big bang): as partículas nascem num
+# ponto e se expandem formando a HUD. Ligada por padrão; desligável no
+# nebell_config.json (big_bang=false). O prefers-reduced-motion do
+# sistema também desliga, por conta da página.
+BIG_BANG = True
 
 # Agora sim, com TODAS as constantes de config já definidas, aplica o
 # nebell_config.json por cima dos padrões (sem risco de ser sobrescrito).
@@ -10167,6 +10174,7 @@ def run_hud_mode():
     """Monta a janela e roda o NEBELL dentro dela."""
     global hud
 
+    nebell_hud.BIG_BANG = BIG_BANG   # a página lê isto ao ser gravada
     hud = nebell_hud.HudBridge(HUD_FILE)
     hud.on_submit = hud_submit
     hud.on_files = hud_files

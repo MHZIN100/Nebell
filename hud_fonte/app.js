@@ -3,7 +3,10 @@ const $=s=>document.querySelector(s), cv=$('#hud');
 const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
 // O nucleo e a nuvem de particulas: cada forma e um estado, e o
 // mapa das ferramentas sai do proprio nebell.py.
-const nucleo=NebellFormas.criar(cv,{particulas:30000});
+// A animacao de abertura (big bang) vem ligada; o Python a desliga pelo
+// data-bigbang do body (nebell_config.json: big_bang=false).
+const bigBang=document.body.dataset.bigbang!=='0';
+const nucleo=NebellFormas.criar(cv,{particulas:30000,bigBang});
 let demo=true;
 
 // Para o fundo da janela mudar de cor junto com o estado.

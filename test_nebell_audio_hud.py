@@ -1424,6 +1424,36 @@ class TestFrontEndEmArquivos(unittest.TestCase):
         self.assertNotIn("__VERSAO__", H.HUD_HTML)
 
 
+class TestBigBang(unittest.TestCase):
+    """3.11: a página marca data-bigbang conforme nebell_hud.BIG_BANG, e
+    a fonte faz a expansão só na projeção (sem tocar a física)."""
+
+    def _gerar(self, ligado):
+        orig = H.BIG_BANG
+        H.BIG_BANG = ligado
+        try:
+            d = Path(tempfile.mkdtemp())
+            br = H.HudBridge(d / "hud" / "index.html", log=lambda *a: None)
+            br.ensure_html()
+            return (d / "hud" / "index.html").read_text(encoding="utf-8")
+        finally:
+            H.BIG_BANG = orig
+
+    def test_ligado_marca_1_no_body(self):
+        self.assertIn('data-bigbang="1"', self._gerar(True))
+        self.assertNotIn("__BIGBANG__", self._gerar(True))
+
+    def test_desligado_marca_0_no_body(self):
+        self.assertIn('data-bigbang="0"', self._gerar(False))
+
+    def test_fonte_expande_so_na_projecao(self):
+        formas = (H.FONTE_DIR / "formas.js").read_text(encoding="utf-8")
+        self.assertIn("pularAbertura", formas)       # pular por tecla/clique
+        self.assertIn("* ent", formas)               # projeção usa o fator
+        app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("dataset.bigbang", app)
+
+
 class TestMarkdownSeguroFonte(unittest.TestCase):
     """Guard estático do renderizador de Markdown: a mensagem vem do
     MODELO, então o app.js nunca pode jogar texto do modelo em innerHTML.

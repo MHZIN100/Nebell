@@ -492,6 +492,22 @@
       px[i] = x * 2.6; py[i] = y * 2.6; pz[i] = z * 2.6;
     }
 
+    // 3.11 Big Bang: a nuvem nasce de um ponto e se expande ate preencher
+    // a HUD. Nao mexe na fisica -- so na PROJECAO: `entrada` multiplica a
+    // posicao na tela, entao em 0 tudo se projeta no centro (um ponto) e
+    // em 1 fica no lugar normal. A fisica roda igual por baixo; a nuvem
+    // ja esta formada quando a expansao termina. Desligado em
+    // prefers-reduced-motion e por config (cfg.bigBang === false).
+    let entrada = (cfg.bigBang !== false && !devagar) ? 0 : 1;
+
+    function pularAbertura() { entrada = 1; }
+
+    if (entrada < 1) {
+      // Qualquer tecla ou clique pula a abertura.
+      global.addEventListener("keydown", pularAbertura, { once: true });
+      global.addEventListener("pointerdown", pularAbertura, { once: true });
+    }
+
     // --- tela ---
     let L = 1, A = 1, buffer = null, buf32 = null;
     let acc = null, calor = null, tocados = null, nTocados = 0;
@@ -644,6 +660,10 @@
       const comeco = (global.performance || Date).now();
       const dt = 0.016;
       t += dt;
+
+      // Big Bang: avanca a expansao (~0,9 s) e suaviza com smoothstep.
+      if (entrada < 1) entrada = Math.min(1, entrada + dt / 0.9);
+      const ent = entrada < 1 ? entrada * entrada * (3 - 2 * entrada) : 1;
 
       const cfgDest = ESTADOS[destino] || ESTADOS.espera;
       ruido += (cfgDest.ruido - ruido) * 0.04;
@@ -821,8 +841,8 @@
         qz = y * senX + qz * cosX;
 
         const escala = foco / (foco + qz);
-        const sx = cx + qx * escala * R;
-        const sy = cy - qy * escala * R;
+        const sx = cx + qx * escala * R * ent;
+        const sy = cy - qy * escala * R * ent;
 
         // A COR soma tres coisas: a profundidade pinta o volume
         // (longe azul, perto vermelho), a energia acende quem esta

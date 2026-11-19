@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 17
+HUD_VERSAO = 19
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -51,6 +51,20 @@ BACKGROUND = "#02070d"
 # que roda de verdade.
 FONTE_DIR = Path(__file__).resolve().parent / "hud_fonte"
 _ASSETS = ("index.html", "estilo.css", "formas.js", "app.js")
+
+# Animacao de abertura (big bang): as particulas nascem num ponto e se
+# expandem. Ligada por padrao; o nebell.py a desliga a partir do
+# nebell_config.json (big_bang). O valor entra no data-bigbang do body
+# quando a pagina e gravada. (prefers-reduced-motion ja desliga no lado
+# da pagina, independente disto.)
+BIG_BANG = True
+
+
+def _marcar_pagina(conteudo):
+    """Troca os marcadores do index.html pelos valores desta sessao."""
+    return (conteudo
+            .replace("__VERSAO__", str(HUD_VERSAO))
+            .replace("__BIGBANG__", "1" if BIG_BANG else "0"))
 
 
 def available():
@@ -261,7 +275,7 @@ class HudBridge:
             for nome in _ASSETS:
                 conteudo = (FONTE_DIR / nome).read_text(encoding="utf-8")
                 if nome == "index.html":
-                    conteudo = conteudo.replace("__VERSAO__", str(HUD_VERSAO))
+                    conteudo = _marcar_pagina(conteudo)
                 (destino / nome).write_text(conteudo, encoding="utf-8")
         except Exception as exc:
             self.log(f"[HUD] Não consegui atualizar a página: {exc}")
@@ -540,7 +554,7 @@ def _montar_html_embutido():
     idx = idx.replace(
         '<script src="app.js"></script>',
         f'<script>\n{corte(_ler_fonte("app.js"))}\n</script>', 1)
-    return idx.replace("__VERSAO__", str(HUD_VERSAO))
+    return _marcar_pagina(idx)
 
 
 try:

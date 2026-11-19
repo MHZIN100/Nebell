@@ -48,5 +48,8 @@
   "ociosidade_min": 10,
 
   "_ajuda_perfil": "Perfil de arranque: 'equilibrado' (padrao), 'jogo' (libera a placa, escuta na CPU), 'estudo' (respostas longas, memoria maior) ou 'economia' (o minimo de maquina ligada, para pouca RAM/bateria). Nome invalido e ignorado.",
-  "perfil": "equilibrado"
+  "perfil": "equilibrado",
+
+  "_ajuda_big_bang": "Animacao de abertura da janela: as particulas nascem num ponto e se expandem formando a HUD. true (padrao) liga; false desliga. Qualquer tecla ou clique pula a animacao. (Se o sistema pede menos movimento, ela ja fica desligada.)",
+  "big_bang": true
 }

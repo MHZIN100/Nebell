@@ -139,6 +139,19 @@ select:focus{border-color:var(--acc)}
 .hist-tit{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hist-sub{font-size:10px;color:var(--dim);letter-spacing:.1em;margin-top:2px}
 .hist-vazio{color:var(--dim);font-size:11px;padding:14px 10px;text-align:center}
+/* 3.4 Animações e microinterações: painéis abrem suaves, mensagens
+   entram com um leve deslize, e os botões respondem ao toque. Tudo
+   desligado quando o sistema pede menos movimento. */
+@keyframes popIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes msgIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.hist-pop:not([hidden]),.effort-pop:not([hidden]){animation:popIn .16s ease-out}
+.msg{animation:msgIn .18s ease-out}
+.iconbtn{transition:background .15s,border-color .15s,color .15s,transform .08s}
+.iconbtn:active{transform:translateY(1px)}
+@media (prefers-reduced-motion:reduce){
+ .hist-pop:not([hidden]),.effort-pop:not([hidden]),.msg{animation:none}
+ .iconbtn:active{transform:none}
+}
 #demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
 @media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}

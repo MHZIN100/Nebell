@@ -7237,7 +7237,7 @@ class TestConfigDoUsuario(unittest.TestCase):
                 "USAR_XTTS", "XTTS_FALANTE", "USAR_EDGE", "EDGE_VOZ",
                 "USAR_KOKORO", "KOKORO_VOZ", "KOKORO_VELOCIDADE",
                 "AUTO_DOWNLOAD_VOICE", "CONFIG_FILE", "OCIOSIDADE_MIN",
-                "PERFIL_PADRAO",
+                "PERFIL_PADRAO", "BIG_BANG",
             )
         }
         self.pasta = Path(tempfile.mkdtemp(prefix="nebell_cfg_"))
@@ -7278,6 +7278,11 @@ class TestConfigDoUsuario(unittest.TestCase):
     def test_perfil_valido_do_config(self):
         self._aplicar({"perfil": "economia"})
         self.assertEqual(J.PERFIL_PADRAO, "economia")
+
+    def test_big_bang_do_config(self):
+        self.assertIs(J.BIG_BANG, True)        # padrão
+        self._aplicar({"big_bang": False})
+        self.assertIs(J.BIG_BANG, False)
 
     def test_perfil_invalido_e_ignorado(self):
         with mock.patch("builtins.print"):
