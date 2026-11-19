@@ -18,9 +18,63 @@ function setState(s){
  $('#state').textContent=n.rotulo;
  $('#sub').textContent=n.diz;
  document.body.dataset.state=FAMILIA[n.estado]||'trabalhando'}
+// ---- Markdown seguro ------------------------------------------------
+// A mensagem renderizada vem do MODELO. Renderizar errado seria abrir
+// XSS na janela, entao NUNCA usamos innerHTML com texto do modelo: tudo
+// vira no de DOM (createElement + textContent). Reconhecemos so um
+// punhado de marcacoes: bloco ```, `codigo`, **negrito**, *italico* e
+// listas "- ". Qualquer outra coisa sai como texto visivel, nunca
+// executada.
+function mdInline(alvo,texto){
+ let resto=String(texto);
+ const re=/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/;
+ while(resto){
+  const m=re.exec(resto);
+  if(!m){alvo.appendChild(document.createTextNode(resto));break}
+  if(m.index>0)alvo.appendChild(document.createTextNode(resto.slice(0,m.index)));
+  const tok=m[0];let el;
+  if(tok[0]==='`'){el=document.createElement('code');el.textContent=tok.slice(1,-1)}
+  else if(tok.slice(0,2)==='**'){el=document.createElement('strong');el.textContent=tok.slice(2,-2)}
+  else{el=document.createElement('em');el.textContent=tok.slice(1,-1)}
+  alvo.appendChild(el);
+  resto=resto.slice(m.index+tok.length);
+ }
+}
+function mdBlocoDeCodigo(texto){
+ const wrap=document.createElement('div');wrap.className='codebloco';
+ const bt=document.createElement('button');bt.type='button';bt.className='copiar';bt.textContent='copiar';
+ bt.addEventListener('click',()=>{try{navigator.clipboard.writeText(texto)}catch(e){}
+  bt.textContent='copiado';setTimeout(()=>{bt.textContent='copiar'},1200)});
+ const pre=document.createElement('pre');const code=document.createElement('code');
+ code.textContent=texto;pre.appendChild(code);
+ wrap.append(bt,pre);return wrap;
+}
+function renderMarkdown(alvo,texto){
+ alvo.replaceChildren();
+ const partes=String(texto).split('```');   // par=fora, impar=bloco de codigo
+ for(let i=0;i<partes.length;i++){
+  if(i%2===1){
+   let corpo=partes[i];const nl=corpo.indexOf('\n');
+   if(nl>=0 && !corpo.slice(0,nl).includes(' '))corpo=corpo.slice(nl+1); // tira "linguagem"
+   alvo.appendChild(mdBlocoDeCodigo(corpo));continue;
+  }
+  if(!partes[i])continue;
+  let lista=null;
+  for(const linha of partes[i].split('\n')){
+   if(/^\s*-\s+/.test(linha)){
+    if(!lista){lista=document.createElement('ul');alvo.appendChild(lista)}
+    const li=document.createElement('li');mdInline(li,linha.replace(/^\s*-\s+/,''));lista.appendChild(li);continue;
+   }
+   lista=null;
+   if(linha.trim()==='')continue;
+   const p=document.createElement('div');p.className='linha';mdInline(p,linha);alvo.appendChild(p);
+  }
+ }
+}
 function addMessage(role,text){fecharStream();const d=document.createElement('div');d.className='msg '+(role==='user'?'user':'nebell');
  const t=new Date().toLocaleTimeString('pt-BR');const sm=document.createElement('small');sm.textContent=(role==='user'?'VOCÊ':'NEBELL')+' · '+t;
- const p=document.createElement('div');p.textContent=text;d.append(sm,p);const log=$('#log');log.append(d);
+ const p=document.createElement('div');if(role==='user'){p.textContent=text}else{renderMarkdown(p,text)}
+ d.append(sm,p);const log=$('#log');log.append(d);
  while(log.children.length>60)log.firstChild.remove();log.scrollTop=log.scrollHeight}
 
 // Bolha que se preenche enquanto ele gera. Antes o texto so aparecia
@@ -37,7 +91,7 @@ function streamMessage(text){
   d.append(sm,streamP);log.append(d);
   while(log.children.length>60)log.firstChild.remove();
  }
- streamP.textContent=text;
+ renderMarkdown(streamP,text);
  log.scrollTop=log.scrollHeight}
 function fecharStream(){
  if(streamP){const d=streamP.parentElement;if(d)d.classList.remove('streaming');streamP=null}}

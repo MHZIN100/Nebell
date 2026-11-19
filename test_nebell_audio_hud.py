@@ -1424,5 +1424,44 @@ class TestFrontEndEmArquivos(unittest.TestCase):
         self.assertNotIn("__VERSAO__", H.HUD_HTML)
 
 
+class TestMarkdownSeguroFonte(unittest.TestCase):
+    """Guard estático do renderizador de Markdown: a mensagem vem do
+    MODELO, então o app.js nunca pode jogar texto do modelo em innerHTML.
+    A execução de verdade (payloads de XSS num Chromium) fica no
+    verificar_hud_markdown.cjs / test_nebell_hud_js.py."""
+
+    def setUp(self):
+        self.app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
+        self.css = (H.FONTE_DIR / "estilo.css").read_text(encoding="utf-8")
+
+    def test_nunca_usa_sinks_de_html(self):
+        # A regra de ouro contra XSS: nenhum sink que interprete texto
+        # do modelo como HTML. (A palavra "innerHTML" aparece só no
+        # comentario que explica isto; o que proibimos e o USO, com ponto.)
+        for sink in (".innerHTML", ".outerHTML", "insertAdjacentHTML",
+                     "document.write"):
+            self.assertNotIn(sink, self.app, sink)
+
+    def test_tem_o_renderizador(self):
+        for nome in ("function renderMarkdown", "function mdInline",
+                     "function mdBlocoDeCodigo"):
+            self.assertIn(nome, self.app, nome)
+
+    def test_constroi_nos_do_dom(self):
+        # O conteudo do modelo entra por textContent/createTextNode, e a
+        # limpeza por replaceChildren -- nunca por marcacao executavel.
+        self.assertIn("createTextNode", self.app)
+        self.assertIn("replaceChildren", self.app)
+
+    def test_resposta_do_modelo_passa_pelo_renderizador(self):
+        # nebell -> renderMarkdown; usuario -> textContent puro.
+        self.assertIn("renderMarkdown(p,text)", self.app)
+        self.assertIn("renderMarkdown(streamP,text)", self.app)
+
+    def test_css_do_bloco_de_codigo(self):
+        self.assertIn(".codebloco", self.css)
+        self.assertIn(".copiar", self.css)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

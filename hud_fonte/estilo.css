@@ -38,6 +38,18 @@ main{display:grid;grid-template-columns:230px 1fr 320px;gap:16px;min-height:0}
 #log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:15px;line-height:1.55;padding-right:6px}
 .msg{border-left:2px solid var(--line);padding-left:12px}.msg small{display:block;margin-bottom:3px;color:var(--dim);font-size:10px;letter-spacing:.2em}
 .msg.nebell{border-color:var(--acc)}.msg.nebell small{color:var(--acc)}
+/* Markdown da resposta: negrito/italico/codigo, listas e blocos de codigo.
+   Montado no DOM (nunca innerHTML), so estilizado aqui. */
+.msg .linha{margin:0 0 2px}
+.msg strong{color:var(--text);font-weight:700}
+.msg em{font-style:italic;color:var(--text)}
+.msg code{font-family:"Share Tech Mono",monospace;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.msg ul{margin:4px 0;padding-left:18px}
+.msg li{margin:1px 0}
+.codebloco{position:relative;margin:6px 0;border:1px solid var(--line);background:rgba(0,0,0,.35)}
+.codebloco pre{margin:0;padding:10px 12px;overflow:auto;max-height:280px}
+.codebloco code{display:block;background:none;border:0;padding:0;white-space:pre;color:var(--text)}
+.codebloco .copiar{position:absolute;top:6px;right:6px;padding:4px 8px;font-size:9px;z-index:1}
 /* Bolha ainda sendo escrita: cursor piscando no fim do texto. */
 .msg.streaming>div:last-child::after{content:"\u258a";color:var(--acc);animation:pisca 1s steps(2) infinite}
 @keyframes pisca{50%{opacity:0}}
