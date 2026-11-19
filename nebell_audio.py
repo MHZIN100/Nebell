@@ -29,6 +29,14 @@ import time
 import unicodedata
 from pathlib import Path
 
+# O PortAudio (motor do PyAudio) NÃO é thread-safe: criar e terminar duas
+# instâncias do PyAudio ao mesmo tempo, em threads diferentes, estoura o
+# processo (access violation no Windows). Acontecia quando a vigia de
+# microfones enumerava os dispositivos bem na hora em que o setup também
+# enumerava — e o NEBELL morria sem erro no Python. Este cadeado de
+# módulo serializa TODA enumeração: nunca duas ao mesmo tempo.
+_PORTAUDIO_LOCK = threading.Lock()
+
 try:
     import speech_recognition as sr
 except Exception:
@@ -279,6 +287,9 @@ class MicManager:
         encontrados = []
         audio = None
 
+        # Segura o cadeado durante toda a vida do PyAudio (criar, enumerar
+        # e terminar): assim a vigia e o setup nunca mexem no áudio juntos.
+        _PORTAUDIO_LOCK.acquire()
         try:
             audio = sr.Microphone.get_pyaudio().PyAudio()
 
@@ -314,6 +325,7 @@ class MicManager:
                     audio.terminate()
                 except Exception:
                     pass
+            _PORTAUDIO_LOCK.release()
 
         self.devices = self.deduplicar(encontrados)
         return self.devices
