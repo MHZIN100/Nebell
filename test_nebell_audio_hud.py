@@ -1331,5 +1331,41 @@ class TestPonteDaNuvem(unittest.TestCase):
         self.assertEqual(self.ponte.chamadas, [("setEsforco", (0.5,))])
 
 
+class TestFrontEndEmArquivos(unittest.TestCase):
+    """A página agora vive em hud_fonte/ (HTML/CSS/JS separados). Estes
+    testes guardam os arquivos-fonte -- os mesmos marcadores que antes
+    eram conferidos na string HUD_HTML."""
+
+    def test_os_quatro_arquivos_existem(self):
+        for nome in H._ASSETS:
+            self.assertTrue(
+                (H.FONTE_DIR / nome).is_file(), f"falta hud_fonte/{nome}"
+            )
+
+    def test_index_referencia_e_nao_embute(self):
+        idx = (H.FONTE_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="estilo.css"', idx)
+        self.assertIn('src="formas.js"', idx)
+        self.assertIn('src="app.js"', idx)
+        self.assertNotIn("<style>", idx)       # estilo saiu para o .css
+        self.assertNotIn("<script>\n", idx)    # scripts saíram para os .js
+        self.assertIn("__VERSAO__", idx)       # versão entra na cópia
+
+    def test_marcadores_nos_arquivos_certos(self):
+        css = (H.FONTE_DIR / "estilo.css").read_text(encoding="utf-8")
+        formas = (H.FONTE_DIR / "formas.js").read_text(encoding="utf-8")
+        app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("#file{", css)
+        self.assertIn("NebellFormas", formas)
+        for marca in ("setVozes", "micmute", "setEsforco"):
+            self.assertIn(marca, app, marca)
+
+    def test_costura_reproduz_o_html_embutido(self):
+        # O HUD_HTML costurado tem de bater com a montagem dos arquivos:
+        # garante que a string e os arquivos nunca discordem.
+        self.assertEqual(H._montar_html_embutido(), H.HUD_HTML)
+        self.assertNotIn("__VERSAO__", H.HUD_HTML)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

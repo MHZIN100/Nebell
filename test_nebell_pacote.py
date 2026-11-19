@@ -94,9 +94,17 @@ def montar(raiz):
         "{}", encoding="utf-8"
     )
 
+    # hud/ e gerado no arranque a partir de hud_fonte/: so a fonte entra
+    # no pacote, a pasta gerada fica de fora.
     (raiz / "hud").mkdir()
     (raiz / "hud" / "index.html").write_text("<html>", encoding="utf-8")
     (raiz / "hud" / "index.anterior.html").write_text("<html>", encoding="utf-8")
+
+    (raiz / "hud_fonte").mkdir()
+    (raiz / "hud_fonte" / "index.html").write_text("<html>", encoding="utf-8")
+    (raiz / "hud_fonte" / "estilo.css").write_text("body{}", encoding="utf-8")
+    (raiz / "hud_fonte" / "formas.js").write_text("//f", encoding="utf-8")
+    (raiz / "hud_fonte" / "app.js").write_text("//a", encoding="utf-8")
 
     (raiz / "workspace").mkdir()
     (raiz / "workspace" / "nota.txt").write_text("ok", encoding="utf-8")
@@ -448,7 +456,10 @@ class TestEmpacotarEscolher(EmpacotarTest):
 
     def test_a_interface_vai(self):
         nomes, _ = self.pacote()
-        self.assertIn("hud/index.html", nomes)
+        # A fonte da pagina entra; a pasta gerada hud/ fica de fora
+        # (o nebell_hud.py a recria no arranque a partir de hud_fonte/).
+        self.assertIn("hud_fonte/index.html", nomes)
+        self.assertNotIn("hud/index.html", nomes)
 
     def test_a_voz_em_uso_vai(self):
         nomes, _ = self.pacote()
@@ -588,7 +599,8 @@ class TestEmpacotarZip(EmpacotarTest):
                 self.assertTrue((saiu / nome).exists(), nome)
 
             self.assertTrue((saiu / "voices" / "nebell" / "model.onnx").exists())
-            self.assertTrue((saiu / "hud" / "index.html").exists())
+            self.assertTrue((saiu / "hud_fonte" / "index.html").exists())
+            self.assertFalse((saiu / "hud").exists())   # gerada no arranque
             self.assertFalse((saiu / ".venv").exists())
 
 

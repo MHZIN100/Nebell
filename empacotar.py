@@ -39,6 +39,9 @@ AQUI = Path(__file__).resolve().parent
 PASTAS_FORA = {
     ".venv", ".venv_antigo", "__pycache__", "audio_temp", "backup",
     ".git", ".idea", ".vscode", "_lixo",
+    # A pasta hud/ e gerada de hud_fonte/ no arranque. So a fonte entra
+    # no pacote; o nebell_hud.py recria hud/ na primeira abertura.
+    "hud",
 }
 
 # Arquivos que nunca entram, por padrao de nome.

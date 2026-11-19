@@ -1,0 +1,118 @@
+:root{--bg:#04030c;--panel:rgba(26,10,52,.5);--line:rgba(150,60,245,.28);--text:#d8c8ff;--dim:#8a76b8;--acc:#9b4bff;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#04030c;--text:#d8c8ff}}
+:root[data-theme="dark"]{--bg:#04030c;--text:#d8c8ff}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 "Share Tech Mono",ui-monospace,Consolas,monospace;overflow:hidden;position:relative}
+body::before{content:"";position:absolute;inset:0;background:
+ radial-gradient(ellipse at center,rgba(90,30,170,.22),transparent 65%),
+ linear-gradient(rgba(150,60,245,.045) 1px,transparent 1px) 0 0/48px 48px,
+ linear-gradient(90deg,rgba(150,60,245,.045) 1px,transparent 1px) 0 0/48px 48px;pointer-events:none}
+body::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.18) 2px 3px);pointer-events:none}
+body[data-state="thinking"]{--acc:#ff4d7a;--line:rgba(255,77,122,.35)}
+body[data-state="trabalhando"]{--acc:#4a86ff;--line:rgba(74,134,255,.32)}
+body[data-state="alerta"]{--acc:#ff305c;--line:rgba(255,48,92,.42)}
+.app{position:relative;z-index:1;height:100%;display:grid;grid-template-rows:auto 1fr auto;gap:12px;padding:14px 18px}
+header{display:flex;justify-content:space-between;align-items:center;font-family:Orbitron,sans-serif;letter-spacing:.3em}
+header h1{margin:0;font-size:20px;font-weight:700;color:var(--acc);text-shadow:0 0 14px var(--acc)}
+.clock{text-align:right;font-size:12px;color:var(--dim);letter-spacing:.15em}.clock b{display:block;font-size:18px;color:var(--text);font-weight:500}
+main{display:grid;grid-template-columns:230px 1fr 320px;gap:16px;min-height:0}
+.panel{position:relative;background:var(--panel);border:1px solid var(--line);padding:14px;backdrop-filter:blur(4px);min-height:0;display:flex;flex-direction:column}
+.panel::before,.panel::after{content:"";position:absolute;width:14px;height:14px;border:2px solid var(--acc)}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.panel h2{margin:0 0 12px;font:500 11px Orbitron,sans-serif;letter-spacing:.25em;color:var(--acc)}
+.stat{margin-bottom:14px}.stat div{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--dim)}
+.stat span+span{color:var(--text);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:6px;margin-top:5px;background:rgba(150,60,245,.14);position:relative}
+.bar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--acc);box-shadow:0 0 10px var(--acc);transition:width .8s}
+#gpu{background:linear-gradient(90deg,#286eff,#963cf5,#ff305c)}
+/* A nuvem de partículas vive reduzida no canto superior direito; a
+   conversa tomou o meio. A hudbox não estica: o canvas tem tamanho fixo
+   e fica grudado no topo da coluna da direita, com o estado embaixo. */
+.hudbox{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:0}
+#hud{width:100%;aspect-ratio:1;max-height:300px;flex:none;min-height:0}
+#state{font:700 14px Orbitron,sans-serif;letter-spacing:.3em;color:var(--acc);text-shadow:0 0 12px var(--acc);margin:6px 0 2px;text-align:center}
+#sub{color:var(--dim);font-size:11px;letter-spacing:.18em;text-align:center}
+#log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;font-size:15px;line-height:1.55;padding-right:6px}
+.msg{border-left:2px solid var(--line);padding-left:12px}.msg small{display:block;margin-bottom:3px;color:var(--dim);font-size:10px;letter-spacing:.2em}
+.msg.nebell{border-color:var(--acc)}.msg.nebell small{color:var(--acc)}
+/* Bolha ainda sendo escrita: cursor piscando no fim do texto. */
+.msg.streaming>div:last-child::after{content:"\u258a";color:var(--acc);animation:pisca 1s steps(2) infinite}
+@keyframes pisca{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.msg.streaming>div:last-child::after{animation:none}}
+/* Linha de "trabalhando nisso", abaixo do estado no canto da nuvem. */
+#work{margin-top:8px;color:var(--warn,#ffb020);font-size:12px;letter-spacing:.12em;min-height:16px;opacity:0;transition:opacity .2s}
+#work.on{opacity:1}
+footer{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.in{flex:1;min-width:240px;display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--panel);padding:0 14px}
+.in span{color:var(--acc)}
+input{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;padding:13px 0}
+button{background:var(--panel);color:var(--acc);border:1px solid var(--line);font:500 11px Orbitron,sans-serif;letter-spacing:.15em;padding:12px 14px;cursor:pointer}
+button:hover{background:rgba(150,60,245,.2)}
+/* Rodapé minimalista: cada controle é só um ícone de 46px, quadrado,
+   que combina com a altura da caixa de texto. O significado fica no
+   tooltip (title) ao passar o mouse. */
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;min-width:46px;padding:0;background:var(--panel);color:var(--acc);border:1px solid var(--line);cursor:pointer;transition:background .15s,border-color .15s}
+.iconbtn:hover{background:rgba(150,60,245,.2)}
+.iconbtn svg{width:20px;height:20px;display:block;pointer-events:none}
+.iconbtn:disabled{opacity:.45;cursor:default}
+/* O seletor de microfone é o <select> nativo deitado por cima do
+   ícone, invisível: o clique abre a lista do sistema de sempre, mas o
+   que se vê é só o ícone. */
+#micbtn{position:relative;overflow:hidden}
+#micbtn select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;max-width:none;cursor:pointer}
+#file{border-color:rgba(150,60,245,.5)}
+#file:hover{background:rgba(150,60,245,.2)}
+#file:disabled{opacity:.5;cursor:default}
+/* Botao ESFORCO: a cor muda com o nivel. Rapido azul, normal roxo,
+   alto rosa -- o mesmo rosa do estado "pensando". */
+#effort{border-color:rgba(150,60,245,.5)}
+#effort:hover{background:rgba(150,60,245,.2)}
+#effort[data-nivel="rapido"]{border-color:#4a86ff;color:#cfe0ff}
+#effort[data-nivel="alto"]{border-color:#ff4d7a;color:#ffd0dc}
+/* Mini-painel do esforco: abre acima do botao, com uma barra de 3
+   niveis (Instantanea embaixo, Alta em cima) que a pessoa arrasta ou
+   clica. Os niveis ate o escolhido ficam "acesos", como uma barra que
+   enche; a cor segue o nivel (azul/roxo/rosa). */
+.effort-wrap{position:relative;display:inline-flex}
+/* Ancorado à direita (alinha com o botão) e abrindo para a esquerda,
+   para a janela não cortar o painel na beira da tela. */
+.effort-pop{position:absolute;bottom:calc(100% + 10px);right:-4px;z-index:60;
+ background:var(--panel);border:1px solid var(--line);padding:11px 12px 9px;width:234px;
+ box-shadow:0 10px 34px rgba(0,0,0,.6)}
+.effort-pop[hidden]{display:none}
+.ep-titulo{font:600 9px Orbitron,sans-serif;letter-spacing:.28em;color:var(--dim);text-align:center}
+.ep-nome{font:700 12px Orbitron,sans-serif;letter-spacing:.3em;text-align:center;margin:4px 0 9px;transition:color .25s;color:#ffa23a}
+/* Pista horizontal: a bolinha corre entre 3 pontos e enche da esquerda
+   para a direita; o canvas dentro do preenchimento desenha a cena do
+   nível (azul calmo / laranja borbulhando / meteoros). */
+.ef-track{position:relative;height:34px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+ background:#07070e;cursor:pointer;touch-action:none;user-select:none}
+.ef-fill{position:absolute;left:0;top:0;height:100%;width:50%;overflow:hidden;
+ border-radius:18px 2px 2px 18px;transition:width .16s}
+.ef-fill canvas{position:absolute;left:0;top:0;height:100%;display:block}
+.ef-ball{position:absolute;top:50%;left:50%;width:22px;height:22px;border-radius:50%;
+ transform:translate(-50%,-50%);background:#fff;
+ box-shadow:0 0 10px rgba(255,255,255,.75),0 2px 6px rgba(0,0,0,.5);transition:left .16s;pointer-events:none}
+.ep-legenda{display:flex;justify-content:space-between;margin-top:7px;
+ font:500 8px Orbitron,sans-serif;letter-spacing:.03em;color:var(--dim)}
+.effort-pop[data-nivel="rapido"] .ep-nome{color:#6fb3ff}
+.effort-pop[data-nivel="normal"] .ep-nome{color:#ffa23a}
+.effort-pop[data-nivel="alto"]   .ep-nome{color:#c9b3ff}
+#halt{border-color:rgba(255,120,120,.5);color:#ff9b9b}
+#halt:hover{background:rgba(255,120,120,.15)}
+select{background:var(--panel);color:var(--text);border:1px solid var(--line);font:11px "Share Tech Mono",monospace;padding:12px 10px;max-width:280px;outline:0;cursor:pointer}
+select:focus{border-color:var(--acc)}
+/* Caixa de seleção de voz no painel SISTEMA, no espaço livre abaixo das
+   estatísticas. Ocupa a largura toda do painel. */
+.vozpick{margin-top:6px}
+.vozpick label{display:block;font-size:10px;letter-spacing:.2em;color:var(--dim);margin-bottom:5px}
+.vozpick select{width:100%;max-width:none;padding:9px 8px}
+/* Botão de silenciar o microfone: quando ligado (silenciado), fica
+   vermelho, como o botão de parar. */
+#micmute[aria-pressed="true"]{border-color:#ff4d7a;color:#ff9b9b;background:rgba(255,77,122,.12)}
+#demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
+@media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
