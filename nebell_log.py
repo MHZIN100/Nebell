@@ -124,6 +124,22 @@ class _Tee:
         return getattr(original, nome)
 
 
+def engolido(contexto=""):
+    """Registra no log, com a pilha, uma excecao que acabou de ser
+    capturada e engolida (um `except ...: pass`). Deve ser chamada DE
+    DENTRO do except. Fica em nivel DEBUG para nao poluir o dia a dia,
+    mas deixa rastro de problemas que antes sumiam sem deixar nada.
+
+    Nunca levanta erro: se ate o log falhar, o programa segue como se o
+    `pass` continuasse ali."""
+    try:
+        obter_logger().debug(
+            "engoliu excecao em %s", contexto or "?", exc_info=True
+        )
+    except Exception:
+        pass
+
+
 def iniciar_log():
     """Liga o arquivo de log e passa a espelhar os prints para ele.
 

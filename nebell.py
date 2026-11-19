@@ -756,7 +756,7 @@ try:
     )
     session.mount("http://", _adapter)
 except Exception:
-    pass
+    nebell_log and nebell_log.engolido("rede: mount do adaptador http")
 
 
 # ============================================================
@@ -2336,7 +2336,7 @@ def warm_up_model():
             timeout=180,
         )
     except Exception:
-        pass
+        nebell_log and nebell_log.engolido("ollama: aquecimento do modelo")
 
 
 # ============================================================
@@ -4273,7 +4273,7 @@ def tool_clima(cidade=None):
                 onde = achados[0].get("name") or cidade
 
         except Exception:
-            pass
+            nebell_log and nebell_log.engolido("clima: geocodificacao da cidade")
 
     if latitude is None:
         return (
@@ -6429,7 +6429,7 @@ def registrar_arquivo_na_memoria(caminho, resumo=""):
     try:
         memoria.registrar_arquivo(str(caminho), resumo or None, None)
     except Exception:
-        pass
+        nebell_log and nebell_log.engolido("memoria: registrar arquivo")
 
 
 def dev_log(mensagem):
@@ -8274,7 +8274,7 @@ def run_tool(name, args):
                     func(**{obrigatorios[0]: next(iter(args.values()))})
                 )[:TOOL_RESULT_MAX]
             except Exception:
-                pass
+                nebell_log and nebell_log.engolido("ferramenta: argumento unico")
 
         print(f"[ferramenta] {name} recusou os argumentos {args}: {exc}")
         return (
@@ -9315,7 +9315,7 @@ def voice_listen_loop():
                         if mic_manager.recover():
                             on_microphone_change(mic_manager)
                     except Exception:
-                        pass
+                        nebell_log and nebell_log.engolido("microfone: recuperacao automatica")
 
                 time.sleep(0.5)
                 continue
@@ -9719,7 +9719,7 @@ def avisar_do_nada(texto, gravidade="aviso"):
         try:
             memoria.registrar_mensagem("nebell", prefixo + texto)
         except Exception:
-            pass
+            nebell_log and nebell_log.engolido("memoria: registrar mensagem")
 
 
 def abrir_agenda():
