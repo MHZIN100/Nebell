@@ -150,9 +150,9 @@ except Exception:
     nebell_backup = None
 
 try:
-    import nebell_backup
+    import nebell_log
 except Exception:
-    nebell_backup = None
+    nebell_log = None
 
 
 # ============================================================
@@ -9943,6 +9943,14 @@ def encerrar(threads=()):
 
 def main():
     global voice, VOICE_MODEL, voz_neural, VOZ_ROTULO
+
+    # Abre o registro da sessao (nebell.log) e passa a copiar os prints
+    # para ele, com horario. Nao muda nada do que aparece no terminal.
+    if nebell_log is not None:
+        try:
+            nebell_log.iniciar_log()
+        except Exception:
+            pass
 
     # Voz, da mais natural para a mais garantida:
     #   XTTS (desligado por padrão: só em máquina forte)

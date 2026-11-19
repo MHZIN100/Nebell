@@ -30,6 +30,8 @@ _lixo/
 *.wav
 nebell_dev.log
 nebell_crash.log
+nebell.log
+nebell.log.*
 
 # A pagina da HUD e gerada pelo nebell_hud.py na abertura
 hud/
