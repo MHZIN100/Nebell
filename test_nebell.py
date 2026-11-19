@@ -3714,8 +3714,17 @@ class TestSelecaoComAsNovas(NebellTest):
             "lembrete", self.selecionar("me lembra de pagar a luz amanha as 8")
         )
 
-    def test_tela_entra_no_pedido_sobre_a_tela(self):
-        self.assertIn("ler_tela", self.selecionar("o que ta escrito na tela"))
+    def test_tela_so_entra_quando_a_visao_esta_ligada(self):
+        # Por padrão a visão de tela vem desligada: não é oferecida.
+        with mock.patch.object(J, "USAR_VISAO_TELA", False):
+            self.assertNotIn(
+                "ler_tela", self.selecionar("o que ta escrito na tela")
+            )
+        # Religada, volta a aparecer para um pedido sobre a tela.
+        with mock.patch.object(J, "USAR_VISAO_TELA", True):
+            self.assertIn(
+                "ler_tela", self.selecionar("o que ta escrito na tela")
+            )
 
     def test_documento_entra_no_pedido_de_resumo(self):
         self.assertIn(

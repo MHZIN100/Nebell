@@ -252,6 +252,8 @@ _CONFIG_CAMPOS = {
     "kokoro_voz": ("KOKORO_VOZ", "txt"),
     "kokoro_velocidade": ("KOKORO_VELOCIDADE", "num"),
     "auto_baixar_voz": ("AUTO_DOWNLOAD_VOICE", "bool"),
+    "usar_visao_tela": ("USAR_VISAO_TELA", "bool"),
+    "usar_tesseract": ("USAR_TESSERACT", "bool"),
 }
 
 
@@ -623,6 +625,19 @@ BACKUP_GERACOES = 2
 # Ollama vai trocar um modelo pelo outro a cada pedido, porque os dois
 # juntos nao cabem em 6 GB.
 VISION_MODEL = ""
+
+# Visão de TELA (ler/capturar o que está na tela do usuário AGORA).
+# Desligada por padrão: é intrusiva e ocupa espaço de ferramentas sem
+# quase ninguém usar. O trabalho por CAMINHO de arquivo (ler_imagem,
+# editar_imagem) continua sempre disponível. Pode religar no
+# nebell_config.json (usar_visao_tela) ou com --com-visao no arranque.
+USAR_VISAO_TELA = False
+
+# OCR (Tesseract): ler texto DENTRO de imagens. Carrega sob demanda,
+# nunca no início. Pode desligar no arranque (--sem-tesseract, usado
+# pelo .bat) ou no nebell_config.json (usar_tesseract). Desligado, a
+# ler_imagem ainda descreve tamanho/formato, só não lê o texto.
+USAR_TESSERACT = True
 
 # Interface HUD em janela. Precisa do pywebview:  pip install pywebview
 USE_HUD = True
@@ -6903,6 +6918,12 @@ def _visao_pronta(para_ocr=False):
             "nebell_visao.py está junto do nebell.py."
         )
 
+    if para_ocr and not USAR_TESSERACT:
+        return (
+            "A leitura de texto por OCR (Tesseract) está desligada nesta "
+            "sessão."
+        )
+
     faltando = nebell_visao.falta_o_que(para_ocr=para_ocr)
 
     if faltando:
@@ -6913,6 +6934,12 @@ def _visao_pronta(para_ocr=False):
 
 def tool_ler_tela(apenas_janela=False):
     """Le o texto que esta aparecendo na tela agora."""
+    if not USAR_VISAO_TELA:
+        return (
+            "A visão de tela está desligada. Se quiser, me passe o caminho "
+            "de uma imagem que eu leio e trabalho nela."
+        )
+
     erro = _visao_pronta(para_ocr=True)
 
     if erro:
@@ -6937,6 +6964,9 @@ def tool_ler_tela(apenas_janela=False):
 
 def tool_capturar_tela(caminho="", apenas_janela=False):
     """Salva um print da tela em um arquivo."""
+    if not USAR_VISAO_TELA:
+        return "A visão de tela está desligada."
+
     erro = _visao_pronta()
 
     if erro:
@@ -6968,7 +6998,8 @@ def tool_capturar_tela(caminho="", apenas_janela=False):
 
 def tool_ler_imagem(caminho):
     """Le o texto escrito em uma imagem, e descreve o arquivo."""
-    erro = _visao_pronta(para_ocr=True)
+    # Só para descrever (tamanho/formato) basta o Pillow; o OCR é à parte.
+    erro = _visao_pronta(para_ocr=False)
 
     if erro:
         return erro
@@ -6984,6 +7015,14 @@ def tool_ler_imagem(caminho):
         return f"Não encontrei {alvo}."
 
     ficha, _ = nebell_visao.descrever(alvo)
+
+    # Sem OCR (Tesseract desligado ou ausente): entrega a descrição do
+    # arquivo mesmo assim, só sem o texto de dentro da imagem.
+    erro_ocr = _visao_pronta(para_ocr=True)
+
+    if erro_ocr:
+        return f"{ficha}\n\n({erro_ocr})"
+
     texto, falha = nebell_visao.ler_texto(alvo)
 
     if falha:
@@ -8391,6 +8430,18 @@ TOOL_POR_NOME = {
 ferramentas_da_vez = []
 
 
+# Ferramentas de VISÃO DE TELA: só entram quando USAR_VISAO_TELA está
+# ligado. Desligadas, nunca são oferecidas ao modelo (nem no fallback).
+TOOL_TELA = {"ler_tela", "capturar_tela"}
+
+
+def tool_schemas_ativos():
+    """TOOL_SCHEMAS menos as ferramentas desligadas por configuração."""
+    if USAR_VISAO_TELA:
+        return TOOL_SCHEMAS
+    return [e for e in TOOL_SCHEMAS if e["function"]["name"] not in TOOL_TELA]
+
+
 def selecionar_ferramentas(texto, extras=()):
     """
     Escolhe as ferramentas que fazem sentido para este pedido.
@@ -8402,6 +8453,8 @@ def selecionar_ferramentas(texto, extras=()):
     escolhidas = []
 
     def juntar(nome):
+        if nome in TOOL_TELA and not USAR_VISAO_TELA:
+            return
         if nome in TOOL_POR_NOME and nome not in escolhidas:
             escolhidas.append(nome)
 
@@ -8923,7 +8976,10 @@ def run_model_round(allow_tools, opcoes=None):
     if allow_tools:
         # So as ferramentas que combinam com o pedido. Mandar todas
         # estourava o contexto e confundia a escolha.
-        payload["tools"] = ferramentas_da_vez or TOOL_SCHEMAS[:MAX_TOOLS_POR_PEDIDO]
+        payload["tools"] = (
+            ferramentas_da_vez
+            or tool_schemas_ativos()[:MAX_TOOLS_POR_PEDIDO]
+        )
 
     first_chunk_pending = True
     answer = ""
@@ -10282,6 +10338,18 @@ def encerrar(threads=()):
 
 def main():
     global voice, VOICE_MODEL, voz_neural, VOZ_ROTULO
+    global USAR_TESSERACT, USAR_VISAO_TELA
+
+    # Opções de arranque (passadas pelo .bat ou na linha de comando).
+    # Vêm DEPOIS do nebell_config.json, então mandam mais que ele.
+    if "--sem-tesseract" in sys.argv:
+        USAR_TESSERACT = False
+    if "--com-tesseract" in sys.argv:
+        USAR_TESSERACT = True
+    if "--com-visao" in sys.argv:
+        USAR_VISAO_TELA = True
+    if "--sem-visao" in sys.argv:
+        USAR_VISAO_TELA = False
 
     # Abre o registro da sessao (nebell.log) e passa a copiar os prints
     # para ele, com horario. Nao muda nada do que aparece no terminal.
@@ -10290,6 +10358,9 @@ def main():
             nebell_log.iniciar_log()
         except Exception:
             pass
+
+    print(f"[Visão] tela {'ligada' if USAR_VISAO_TELA else 'desligada'} · "
+          f"OCR {'ligado' if USAR_TESSERACT else 'desligado'}")
 
     # Se o usuario tiver um nebell_config.json, mostra o que ele mudou
     # (ja foi aplicado la na importacao). Vai para a tela e para o log.
