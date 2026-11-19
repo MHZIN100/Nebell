@@ -223,6 +223,12 @@ class MicManager:
         self.capturando = threading.Event()
         self.ultimo_nivel = 0
 
+        # Callback opcional: recebe cada pedaco de audio lido DURANTE a
+        # escuta, para a HUD mostrar o nivel do microfone em tempo real.
+        # Quem liga isto e o nebell.py (feed_mic_level). Erros no
+        # callback sao engolidos e nunca atrapalham a captura.
+        self.on_nivel = None
+
         self._fonte = None
         self._signature = None
         self._watching = False
@@ -728,22 +734,76 @@ class MicManager:
                     if limpar:
                         self.limpar_buffer(fonte)
 
-                    audio = self.recognizer.listen(
-                        fonte, timeout=timeout,
-                        phrase_time_limit=phrase_time_limit,
-                    )
-                else:
-                    with self.microphone as aberta:
+                    restaurar = self._instalar_sonda_de_nivel(fonte)
+                    try:
                         audio = self.recognizer.listen(
-                            aberta, timeout=timeout,
+                            fonte, timeout=timeout,
                             phrase_time_limit=phrase_time_limit,
                         )
+                    finally:
+                        if restaurar:
+                            restaurar()
+                else:
+                    with self.microphone as aberta:
+                        restaurar = self._instalar_sonda_de_nivel(aberta)
+                        try:
+                            audio = self.recognizer.listen(
+                                aberta, timeout=timeout,
+                                phrase_time_limit=phrase_time_limit,
+                            )
+                        finally:
+                            if restaurar:
+                                restaurar()
 
             self.medir_nivel(audio)
             return audio
 
         finally:
             self.capturando.clear()
+
+    def _instalar_sonda_de_nivel(self, fonte):
+        """
+        Enquanto a escuta roda, espia cada pedaco de audio lido e manda
+        o nivel para quem registrou `on_nivel`.
+
+        O speech_recognition le o microfone chamando `fonte.stream.read`
+        em laco. Grampeamos esse read: ele continua devolvendo os mesmos
+        bytes, so passa uma copia para o callback antes. Devolve uma
+        funcao que desfaz o grampo (para nao vazar entre escutas); None
+        quando nao da para instalar. Nunca levanta: um erro no callback
+        e engolido para nao derrubar a gravacao.
+        """
+        cb = self.on_nivel
+
+        if cb is None:
+            return None
+
+        fluxo = getattr(fonte, "stream", None)
+        original = getattr(fluxo, "read", None)
+
+        if original is None:
+            return None
+
+        def espiado(*args, **kwargs):
+            dados = original(*args, **kwargs)
+            try:
+                cb(dados)
+            except Exception:
+                pass
+            return dados
+
+        try:
+            fluxo.read = espiado
+        except Exception:
+            return None
+
+        def restaurar():
+            try:
+                fluxo.read = original
+            except Exception:
+                pass
+
+        return restaurar
 
     def source(self):
         """Compatibilidade: devolve o microfone para uso em contexto."""

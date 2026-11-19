@@ -3314,6 +3314,50 @@ class TestModoHud(NebellTest):
         J.feed_level(quadro)
         self.assertEqual(self.hud.set_level.call_count, 1)
 
+    def test_nivel_rms_silencio_e_zero(self):
+        import struct
+        self.assertEqual(J.nivel_rms(struct.pack("<8h", *([0] * 8))), 0.0)
+
+    def test_nivel_rms_vazio_e_zero(self):
+        self.assertEqual(J.nivel_rms(b""), 0.0)
+
+    def test_nivel_rms_tom_alto_fica_perto_do_teto(self):
+        import struct
+        self.assertGreater(J.nivel_rms(struct.pack("<8h", *([9000] * 8))), 0.5)
+
+    def test_nivel_do_microfone_vai_para_a_janela(self):
+        import struct
+        quadro = struct.pack("<8h", *([9000] * 8))
+        J._mic_level_sent_at = 0
+        J.mic_mudo.clear()
+        J.busy_event.clear()
+        J.feed_mic_level(quadro)
+        self.hud.set_level.assert_called_once()
+
+    def test_mic_mudo_nao_manda_nivel(self):
+        import struct
+        quadro = struct.pack("<8h", *([9000] * 8))
+        J._mic_level_sent_at = 0
+        J.busy_event.clear()
+        J.mic_mudo.set()
+        try:
+            J.feed_mic_level(quadro)
+        finally:
+            J.mic_mudo.clear()
+        self.hud.set_level.assert_not_called()
+
+    def test_nivel_do_mic_cala_enquanto_a_nebell_fala(self):
+        import struct
+        quadro = struct.pack("<8h", *([9000] * 8))
+        J._mic_level_sent_at = 0
+        J.mic_mudo.clear()
+        J.busy_event.set()
+        try:
+            J.feed_mic_level(quadro)
+        finally:
+            J.busy_event.clear()
+        self.hud.set_level.assert_not_called()
+
     def test_troca_de_microfone_pela_janela(self):
         falso = mock.Mock()
         falso.use.return_value = (True, "Microfone agora é Fone.")

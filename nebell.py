@@ -857,6 +857,7 @@ _output_stream = None
 _output_format = None
 _current_audio = None          # mantem o buffer vivo durante a reproducao
 _level_sent_at = 0.0
+_mic_level_sent_at = 0.0        # contador proprio do nivel do microfone
 _filler_cache = {}
 metrics = {"request_started": 0.0, "first_audio": 0.0}
 
@@ -1292,6 +1293,35 @@ def wav_parts(data):
         )
 
 
+def nivel_rms(pedaco):
+    """
+    Volume de um trecho de audio PCM 16-bit, normalizado em 0..1.
+
+    Devolve 0.0 quando o trecho esta vazio ou ilegivel. Serve tanto para
+    a fala da NEBELL quanto para o microfone -- por isso ficou numa
+    funcao so, em vez de embutida na fala como antes.
+    """
+    try:
+        import audioop
+        rms = audioop.rms(pedaco, 2)
+    except Exception:
+        # audioop saiu do Python 3.13: calcula na mao.
+        try:
+            import array
+            amostras = array.array("h")
+            amostras.frombytes(pedaco[:len(pedaco) - len(pedaco) % 2])
+
+            if not amostras:
+                return 0.0
+
+            soma = sum(v * v for v in amostras)
+            rms = int((soma / len(amostras)) ** 0.5)
+        except Exception:
+            return 0.0
+
+    return min(1.0, rms / 9000.0)
+
+
 def feed_level(pedaco):
     """
     Manda o volume do trecho para a HUD, para as barras acompanharem a
@@ -1306,25 +1336,37 @@ def feed_level(pedaco):
 
     _level_sent_at = agora
 
+    if hud is not None:
+        hud.set_level(nivel_rms(pedaco))
+
+
+def feed_mic_level(pedaco):
+    """
+    Nivel do MICROFONE para a HUD, enquanto a pessoa fala: as barras
+    acompanham a voz de quem fala, nao so a da NEBELL.
+
+    Silencia quando o microfone esta mudo ou quando a NEBELL esta falando
+    (busy_event) -- senao o nivel do microfone se misturaria com o da
+    fala dela. Mesmo teto de ~quinze envios por segundo da fala, num
+    contador proprio. Nunca levanta: e chamada de dentro da thread de
+    audio e um erro aqui nao pode derrubar a escuta.
+    """
+    global _mic_level_sent_at
+
+    if hud is None or mic_mudo.is_set() or busy_event.is_set():
+        return
+
+    agora = time.time()
+
+    if agora - _mic_level_sent_at < 0.07:
+        return
+
+    _mic_level_sent_at = agora
+
     try:
-        import audioop
-        rms = audioop.rms(pedaco, 2)
+        hud.set_level(nivel_rms(pedaco))
     except Exception:
-        # audioop saiu do Python 3.13: calcula na mao.
-        try:
-            import array
-            amostras = array.array("h")
-            amostras.frombytes(pedaco[:len(pedaco) - len(pedaco) % 2])
-
-            if not amostras:
-                return
-
-            soma = sum(v * v for v in amostras)
-            rms = int((soma / len(amostras)) ** 0.5)
-        except Exception:
-            return
-
-    hud.set_level(min(1.0, rms / 9000.0))
+        pass
 
 
 def get_pyaudio():
@@ -2763,6 +2805,8 @@ def setup_microphone():
     mic_manager = nebell_audio.MicManager(
         base_dir=BASE_DIR, on_change=on_microphone_change
     )
+    # As barras da HUD acompanham tambem a voz de quem fala no microfone.
+    mic_manager.on_nivel = feed_mic_level
     aberto = mic_manager.start(watch=WATCH_MIC_DEVICES)
 
     if aberto:

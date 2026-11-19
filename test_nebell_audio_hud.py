@@ -1331,6 +1331,63 @@ class TestPonteDaNuvem(unittest.TestCase):
         self.assertEqual(self.ponte.chamadas, [("setEsforco", (0.5,))])
 
 
+class TestSondaDeNivelDoMic(unittest.TestCase):
+    """O grampo que espia cada pedaco lido durante a escuta, para a HUD
+    mostrar o nivel do microfone -- sem atrapalhar a leitura."""
+
+    def _mic(self):
+        m = A.MicManager.__new__(A.MicManager)   # sem abrir audio de verdade
+        m.on_nivel = None
+        return m
+
+    class _Fluxo:
+        def __init__(self):
+            self.lido = []
+
+        def read(self, n, *a, **k):
+            dados = b"\x01\x02" * n
+            self.lido.append(n)
+            return dados
+
+    class _Fonte:
+        def __init__(self, fluxo):
+            self.stream = fluxo
+
+    def test_sem_callback_nao_instala(self):
+        m = self._mic()
+        fonte = self._Fonte(self._Fluxo())
+        self.assertIsNone(m._instalar_sonda_de_nivel(fonte))
+
+    def test_espia_e_devolve_os_mesmos_bytes(self):
+        m = self._mic()
+        recebidos = []
+        m.on_nivel = recebidos.append
+        fluxo = self._Fluxo()
+        fonte = self._Fonte(fluxo)
+
+        restaurar = m._instalar_sonda_de_nivel(fonte)
+        self.assertIsNotNone(restaurar)
+        saida = fluxo.read(4)                     # como o recognizer faria
+        self.assertEqual(saida, b"\x01\x02" * 4)  # bytes intactos
+        self.assertEqual(recebidos, [b"\x01\x02" * 4])
+
+        restaurar()                               # desfaz o grampo
+        recebidos.clear()
+        fluxo.read(4)
+        self.assertEqual(recebidos, [])           # nao espia mais
+
+    def test_erro_no_callback_nao_derruba_a_leitura(self):
+        m = self._mic()
+        def explode(_):
+            raise RuntimeError("falha de proposito")
+        m.on_nivel = explode
+        fluxo = self._Fluxo()
+        fonte = self._Fonte(fluxo)
+
+        m._instalar_sonda_de_nivel(fonte)
+        self.assertEqual(fluxo.read(2), b"\x01\x02" * 2)   # leitura segue
+
+
 class TestFrontEndEmArquivos(unittest.TestCase):
     """A página agora vive em hud_fonte/ (HTML/CSS/JS separados). Estes
     testes guardam os arquivos-fonte -- os mesmos marcadores que antes
