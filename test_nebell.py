@@ -7176,6 +7176,19 @@ class TestConfigDoUsuario(unittest.TestCase):
         self.assertEqual(dados["_ajuda"], "oi")             # preservado
         self.assertTrue(dados["usar_edge"] and dados["usar_kokoro"])
 
+    def test_personalidade_muda_o_prompt(self):
+        with mock.patch.object(J, "PERSONALIDADE", "profissional"):
+            self.assertEqual(J.personalidade_para_o_prompt(), "")
+        with mock.patch.object(J, "PERSONALIDADE", "descontraido"):
+            self.assertIn("descontra", J.personalidade_para_o_prompt().lower())
+        with mock.patch.object(J, "PERSONALIDADE", "personalizado"), \
+                mock.patch.object(J, "PERSONALIDADE_CUSTOM", "fale como um pirata"):
+            self.assertIn("pirata", J.personalidade_para_o_prompt())
+        # Personalizado sem texto cai no padrão (sem acréscimo).
+        with mock.patch.object(J, "PERSONALIDADE", "personalizado"), \
+                mock.patch.object(J, "PERSONALIDADE_CUSTOM", ""):
+            self.assertEqual(J.personalidade_para_o_prompt(), "")
+
     def test_exemplo_bate_com_os_padroes(self):
         # O modelo versionado deve refletir os padroes de fabrica, senao
         # quem copiar o exemplo muda o comportamento sem querer.

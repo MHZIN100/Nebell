@@ -254,6 +254,8 @@ _CONFIG_CAMPOS = {
     "auto_baixar_voz": ("AUTO_DOWNLOAD_VOICE", "bool"),
     "usar_visao_tela": ("USAR_VISAO_TELA", "bool"),
     "usar_tesseract": ("USAR_TESSERACT", "bool"),
+    "personalidade": ("PERSONALIDADE", "txt"),
+    "personalidade_custom": ("PERSONALIDADE_CUSTOM", "txt"),
 }
 
 
@@ -306,8 +308,9 @@ def _aplicar_config():
     return aplicados
 
 
-# Aplicada JA na importacao, antes de qualquer preparar_voz usar os valores.
-_CONFIG_APLICADA = _aplicar_config()
+# A aplicação de fato acontece mais abaixo (_CONFIG_APLICADA), depois que
+# TODAS as constantes que o config ajusta já foram definidas -- senão o
+# valor padrão de cada uma sobrescreveria o que veio do arquivo.
 
 
 def descobrir_voz():
@@ -638,6 +641,16 @@ USAR_VISAO_TELA = False
 # pelo .bat) ou no nebell_config.json (usar_tesseract). Desligado, a
 # ler_imagem ainda descreve tamanho/formato, só não lê o texto.
 USAR_TESSERACT = True
+
+# Personalidade (tom da NEBELL). "profissional" (padrão, trata por
+# "senhor"), "equilibrado", "descontraido" ou "personalizado" (aí o
+# texto livre vai em PERSONALIDADE_CUSTOM). Ajustável no nebell_config.json.
+PERSONALIDADE = "profissional"
+PERSONALIDADE_CUSTOM = ""
+
+# Agora sim, com TODAS as constantes de config já definidas, aplica o
+# nebell_config.json por cima dos padrões (sem risco de ser sobrescrito).
+_CONFIG_APLICADA = _aplicar_config()
 
 # Interface HUD em janela. Precisa do pywebview:  pip install pywebview
 USE_HUD = True
@@ -3447,6 +3460,39 @@ def abrir_memoria():
     return True
 
 
+# Tons de personalidade. "profissional" não precisa de texto extra: é o
+# que o BASE_SYSTEM_PROMPT já descreve (formal, trata por "senhor").
+PERSONALIDADES = {
+    "equilibrado": (
+        "TOM: natural e cordial, nem robótico nem formal demais. Pode "
+        "tratar o usuário por \"você\". Nada de gírias forçadas nem de "
+        "formalidade excessiva; um toque de leveza quando couber, sempre "
+        "mantendo a precisão."
+    ),
+    "descontraido": (
+        "TOM: descontraído e próximo, como um amigo que entende do "
+        "assunto. Trate o usuário por \"você\". Pode usar uma gíria leve "
+        "ou um \"kkk\" quando ele estiver de boa, e acompanhar um "
+        "palavrão leve SE ele usar primeiro. Nunca comece puxando gíria "
+        "ou palavrão, não exagere, e não perca a precisão técnica. Se o "
+        "assunto pedir seriedade, fique sério."
+    ),
+}
+
+
+def personalidade_para_o_prompt():
+    """Devolve o trecho de tom a acrescentar, conforme a configuração."""
+    chave = (PERSONALIDADE or "").strip().lower()
+
+    if chave == "personalizado" and PERSONALIDADE_CUSTOM.strip():
+        return "\nESTILO PEDIDO PELO USUÁRIO: " + PERSONALIDADE_CUSTOM.strip() + "\n"
+
+    if chave in PERSONALIDADES:
+        return "\n" + PERSONALIDADES[chave] + "\n"
+
+    return ""   # "profissional" ou valor desconhecido: o base já basta
+
+
 def build_system_prompt(para_codigo=False):
     """
     Monta o prompt do sistema.
@@ -3541,6 +3587,8 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
             "\nMODO DESENVOLVEDOR LIGADO: ao usar uma ferramenta, diga em "
             "uma frase curta qual usou e por quê, antes da resposta.\n"
         )
+
+    extra += personalidade_para_o_prompt()
 
     return BASE_SYSTEM_PROMPT + extra
 

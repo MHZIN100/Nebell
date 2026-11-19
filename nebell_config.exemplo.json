@@ -30,5 +30,17 @@
   "kokoro_velocidade": 1.0,
 
   "_ajuda_auto_baixar_voz": "Baixar a voz Piper (ultima reserva) automaticamente se faltar. Padrao: true.",
-  "auto_baixar_voz": true
+  "auto_baixar_voz": true,
+
+  "_ajuda_usar_visao_tela": "Deixar a NEBELL LER/CAPTURAR a sua tela. Padrao: false (desligado). O trabalho por caminho de imagem (ler_imagem) funciona mesmo com isto desligado.",
+  "usar_visao_tela": false,
+
+  "_ajuda_usar_tesseract": "Ler texto DENTRO de imagens (OCR). Padrao: true. O Iniciar_NEBELL.bat tambem deixa escolher COM/SEM no arranque.",
+  "usar_tesseract": true,
+
+  "_ajuda_personalidade": "Tom da NEBELL: 'profissional' (padrao, trata por senhor), 'equilibrado', 'descontraido' ou 'personalizado'.",
+  "personalidade": "profissional",
+
+  "_ajuda_personalidade_custom": "Se personalidade = 'personalizado', descreva aqui o estilo que voce quer (texto livre).",
+  "personalidade_custom": ""
 }
