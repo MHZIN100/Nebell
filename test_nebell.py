@@ -262,9 +262,9 @@ class NebellTest(unittest.TestCase):
         garantir_trabalhadores()
         abrir_memoria_de_teste()
         J.reset_history()
-        J.first_chunk_pending = True
-        J.tools_supported = True
-        J.interaction_mode = "text"
+        J.estado.first_chunk_pending = True
+        J.estado.tools_supported = True
+        J.estado.interaction_mode = "text"
         J.synthesis_config = None
         J.cancel_event.clear()
         J.busy_event.clear()
@@ -385,20 +385,20 @@ class TestTextoFalado(NebellTest):
         self.assertEqual(J.find_sentence_end("A taxa e de 3.5 por cento e"), -1)
 
     def test_primeiro_trecho_sai_na_virgula(self):
-        J.first_chunk_pending = True
+        J.estado.first_chunk_pending = True
         resto = J.queue_sentences("Claro senhor, o tempo hoje esta")
         falado = flush_speech()
         self.assertEqual(falado, ["Claro senhor,"])
         self.assertEqual(resto, "o tempo hoje esta")
 
     def test_frase_completa_tem_prioridade(self):
-        J.first_chunk_pending = False
+        J.estado.first_chunk_pending = False
         resto = J.queue_sentences("Sao vinte graus. E deve")
         self.assertEqual(flush_speech(), ["Sao vinte graus."])
         self.assertEqual(resto, "E deve")
 
     def test_nao_corta_em_abreviacao(self):
-        J.first_chunk_pending = False
+        J.estado.first_chunk_pending = False
         texto = "O Sr. Silva confirmou que o valor e de 3.5 por cento"
         resto = J.queue_sentences(texto)
         for falado in flush_speech():
@@ -406,13 +406,13 @@ class TestTextoFalado(NebellTest):
         self.assertNotIn("3.5", "".join(flush_speech()))
 
     def test_force_despacha_o_resto(self):
-        J.first_chunk_pending = False
+        J.estado.first_chunk_pending = False
         resto = J.queue_sentences("sem pontuacao final", force=True)
         self.assertEqual(resto, "")
         self.assertEqual(flush_speech(), ["sem pontuacao final"])
 
     def test_trecho_longo_sem_pontuacao(self):
-        J.first_chunk_pending = False
+        J.estado.first_chunk_pending = False
         longo = "palavra " * 30
         resto = J.queue_sentences(longo)
         self.assertTrue(flush_speech())
@@ -1343,7 +1343,7 @@ class TestModelo(NebellTest):
         with mock.patch.object(J, "session", fake):
             J.ask_nebell("oi")
 
-        self.assertFalse(J.tools_supported)
+        self.assertFalse(J.estado.tools_supported)
         self.assertIn("Posso conversar.", " ".join(flush_speech()))
 
     def test_ollama_fora_do_ar(self):
@@ -1450,33 +1450,33 @@ class TestConfirmacao(NebellTest):
         flush_speech()
 
     def test_voz_aceita(self):
-        J.interaction_mode = "voice"
+        J.estado.interaction_mode = "voice"
         try:
             with mock.patch.object(J, "listen", return_value="sim, pode"), \
                  mock.patch.object(J, "microphone_available", return_value=True):
                 self.assertTrue(J.confirm_action("Vou executar."))
         finally:
-            J.interaction_mode = "text"
+            J.estado.interaction_mode = "text"
         flush_speech()
 
     def test_voz_recusa(self):
-        J.interaction_mode = "voice"
+        J.estado.interaction_mode = "voice"
         try:
             with mock.patch.object(J, "listen", return_value="não, cancela"), \
                  mock.patch.object(J, "microphone_available", return_value=True):
                 self.assertFalse(J.confirm_action("Vou executar."))
         finally:
-            J.interaction_mode = "text"
+            J.estado.interaction_mode = "text"
         flush_speech()
 
     def test_voz_sem_resposta_cancela(self):
-        J.interaction_mode = "voice"
+        J.estado.interaction_mode = "voice"
         try:
             with mock.patch.object(J, "listen", return_value=None), \
                  mock.patch.object(J, "microphone_available", return_value=True):
                 self.assertFalse(J.confirm_action("Vou executar."))
         finally:
-            J.interaction_mode = "text"
+            J.estado.interaction_mode = "text"
         flush_speech()
 
 
@@ -2767,7 +2767,7 @@ class TestConfirmacaoNaJanela(NebellTest):
         self.hud = mock.Mock()
         self.hud.active = True
         J.hud = self.hud
-        J.interaction_mode = "text"
+        J.estado.interaction_mode = "text"
         while not J.request_queue.empty():
             J.request_queue.get_nowait()
 
@@ -5626,7 +5626,7 @@ class TestSelecaoParaCodigo(NebellTest):
 class TestReceberArquivo(NebellTest):
     def setUp(self):
         super().setUp()
-        J.arquivo_em_foco = {}
+        J.estado.arquivo_em_foco = {}
         self.pedidos = []
 
         self.calar = mock.patch.multiple(
@@ -5643,7 +5643,7 @@ class TestReceberArquivo(NebellTest):
     def tearDown(self):
         self.calar.stop()
         self.atender.stop()
-        J.arquivo_em_foco = {}
+        J.estado.arquivo_em_foco = {}
 
     def enviar(self, nome, conteudo="", binario=None):
         alvo = J.WORKSPACE_DIR / nome
@@ -5699,8 +5699,8 @@ class TestReceberArquivo(NebellTest):
     def test_o_arquivo_fica_em_foco(self):
         alvo = self.enviar("foco.py", "x = 1")
 
-        self.assertEqual(J.arquivo_em_foco["caminho"], str(alvo))
-        self.assertTrue(J.arquivo_em_foco["ficha"])
+        self.assertEqual(J.estado.arquivo_em_foco["caminho"], str(alvo))
+        self.assertTrue(J.estado.arquivo_em_foco["ficha"])
 
     def test_o_prompt_do_sistema_aponta_o_arquivo(self):
         alvo = self.enviar("prompt.py", "x = 1")
@@ -6179,7 +6179,7 @@ class TestPediuArquivo(NebellTest):
 class TestSalvarCodigoDaResposta(NebellTest):
     def setUp(self):
         super().setUp()
-        J.arquivo_em_foco = {}
+        J.estado.arquivo_em_foco = {}
 
         # Pasta limpa por teste: a de trabalho é compartilhada, e um
         # Animal.java deixado por outro teste faria este passar ou
@@ -6250,7 +6250,7 @@ class TestSalvarCodigoDaResposta(NebellTest):
         J.salvar_codigo_da_resposta(
             "faça arquivo em java sobre herança", RESPOSTA_DE_HERANCA
         )
-        self.assertIn("Cachorro.java", J.arquivo_em_foco.get("caminho", ""))
+        self.assertIn("Cachorro.java", J.estado.arquivo_em_foco.get("caminho", ""))
 
     def test_fica_registrado_na_memoria(self):
         J.salvar_codigo_da_resposta(

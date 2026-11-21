@@ -808,9 +808,6 @@ Não mostre raciocínio interno nem tags de pensamento.
 speech_queue = queue.Queue()
 audio_queue = queue.Queue(maxsize=3)
 
-interaction_mode = "text"
-first_chunk_pending = True
-tools_supported = True
 voice = None
 voz_neural = None              # VozXtts ou VozKokoro quando um deles está ativo
 VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
@@ -844,6 +841,17 @@ class Estado:
         self.location_info = {}
         self.location_fetched_at = 0.0
         self.location_errors = []
+        # Turno atual: modo, flags de geracao e ferramentas da vez.
+        self.interaction_mode = "text"
+        self.first_chunk_pending = True
+        self.tools_supported = True
+        self.ferramentas_da_vez = []
+
+        # Foco atual: arquivo e documento em que a NEBELL esta trabalhando.
+        self.arquivo_em_foco = {}
+        self.documento_em_foco = {}
+
+        # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
 
 estado = Estado()
@@ -1709,13 +1717,12 @@ def speak(text):
     Marca `falando_agora` para a escuta nao gravar o alto-falante, e
     guarda o texto para reconhecer o proprio eco depois.
     """
-    global first_chunk_pending
 
     if not (text and text.strip()):
         return
 
     limpo = text.strip()
-    first_chunk_pending = False
+    estado.first_chunk_pending = False
     fala_comecou()
 
     ultimas_falas.append(normalize(limpo))
@@ -1976,7 +1983,7 @@ def voice_barge_in_watcher():
 
     while True:
         try:
-            if not (busy_event.is_set() and interaction_mode == "voice"
+            if not (busy_event.is_set() and estado.interaction_mode == "voice"
                     and microphone_available() and not cancel_event.is_set()
                     and not mic_mudo.is_set()):
                 time.sleep(0.1)
@@ -3509,7 +3516,7 @@ def queue_sentences(buffer, force=False):
                 speak(remaining)
             return ""
 
-        if first_chunk_pending:
+        if estado.first_chunk_pending:
             comma = re.search(r"[,;:]\s+", buffer)
 
             if comma and comma.end() >= FIRST_CHUNK_MIN:
@@ -3693,11 +3700,11 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
 5. Escreva código completo e que compile. Sem "..." nem "resto igual".
 """
 
-    if arquivo_em_foco.get("caminho"):
+    if estado.arquivo_em_foco.get("caminho"):
         extra += (
             f"\nARQUIVO QUE O USUÁRIO ENVIOU AGORA: "
-            f"{arquivo_em_foco['caminho']}\n"
-            f"  ({arquivo_em_foco.get('ficha', '')})\n"
+            f"{estado.arquivo_em_foco['caminho']}\n"
+            f"  ({estado.arquivo_em_foco.get('ficha', '')})\n"
             "Quando ele disser 'esse arquivo', 'nele', 'aqui', é esse. "
             "Para mudar um pedaço use editar_arquivo; para acrescentar "
             "no fim use acrescentar_arquivo; para refazer inteiro use "
@@ -4530,7 +4537,7 @@ def confirm_action(spoken, details=""):
     wait_for_speech()
 
     # Pela janela: a resposta vem na caixa de texto.
-    if na_janela and interaction_mode != "voice":
+    if na_janela and estado.interaction_mode != "voice":
         limite = time.time() + CONFIRM_TIMEOUT
 
         while time.time() < limite:
@@ -4569,7 +4576,7 @@ def confirm_action(spoken, details=""):
         return False
 
     # Por voz.
-    if interaction_mode == "voice" and microphone_available():
+    if estado.interaction_mode == "voice" and microphone_available():
         for _ in range(2):
             answer = listen(timeout=8, phrase_time_limit=6)
 
@@ -7443,18 +7450,15 @@ def tool_atalho(teclas):
 # DOCUMENTOS
 # ============================================================
 
-documento_em_foco = {}
 
 # O arquivo que o usuario acabou de enviar pelo botao da janela. Fica no
 # prompt do sistema para que "adiciona uma funcao nesse arquivo" saiba
 # de qual arquivo se trata, sem ele ter de repetir o caminho.
-arquivo_em_foco = {}
 
 
 def guardar_arquivo_em_foco(caminho, ficha=""):
-    global arquivo_em_foco
 
-    arquivo_em_foco = {"caminho": str(caminho), "ficha": ficha}
+    estado.arquivo_em_foco = {"caminho": str(caminho), "ficha": ficha}
 
 
 def descrever_arquivo(caminho):
@@ -7562,8 +7566,7 @@ def guardar_documento_em_foco(dados):
     Sem isto, "e o que ele diz sobre o prazo?" obrigaria a ler o PDF de
     novo a cada pergunta.
     """
-    global documento_em_foco
-    documento_em_foco = dict(dados or {})
+    estado.documento_em_foco = dict(dados or {})
 
 
 def tool_resumir_documento(caminho, pergunta=""):
@@ -7597,7 +7600,7 @@ def tool_procurar_no_documento(termo, caminho=""):
     if nebell_docs is None:
         return "O módulo de documentos não está na pasta."
 
-    dados = documento_em_foco
+    dados = estado.documento_em_foco
 
     if caminho:
         alvo = resolve_path(caminho)
@@ -8674,7 +8677,6 @@ TOOL_POR_NOME = {
     esquema["function"]["name"]: esquema for esquema in TOOL_SCHEMAS
 }
 
-ferramentas_da_vez = []
 
 
 # Ferramentas de VISÃO DE TELA: só entram quando USAR_VISAO_TELA está
@@ -9207,7 +9209,6 @@ def opcoes_do_pedido(texto=""):
 
 def run_model_round(allow_tools, opcoes=None):
     """Uma chamada ao modelo. Fala em streaming e devolve (texto, chamadas)."""
-    global first_chunk_pending
 
     payload = {
         "model": MODEL_NAME,
@@ -9224,11 +9225,11 @@ def run_model_round(allow_tools, opcoes=None):
         # So as ferramentas que combinam com o pedido. Mandar todas
         # estourava o contexto e confundia a escolha.
         payload["tools"] = (
-            ferramentas_da_vez
+            estado.ferramentas_da_vez
             or tool_schemas_ativos()[:MAX_TOOLS_POR_PEDIDO]
         )
 
-    first_chunk_pending = True
+    estado.first_chunk_pending = True
     answer = ""
     speech_buffer = ""
     tool_calls = []
@@ -9312,7 +9313,6 @@ def ask_nebell(user_text, resumo=None):
     atalhos locais nao rodam, para um prompt interno nao disparar o
     clima nem um comando ensinado.
     """
-    global tools_supported
 
     user_text = user_text.strip()
 
@@ -9360,7 +9360,6 @@ def ask_nebell(user_text, resumo=None):
 
     ensure_location(user_text)
 
-    global ferramentas_da_vez
 
     # Quando o pedido e claramente sobre a tela, a ferramenta de ler a
     # tela entra na frente das outras, para ele nao tentar adivinhar.
@@ -9368,13 +9367,13 @@ def ask_nebell(user_text, resumo=None):
         ("ler_tela",) if TELA_RE.search(normalize(user_text)) else ()
     )
 
-    ferramentas_da_vez = selecionar_ferramentas(user_text, extras=forcadas)
+    estado.ferramentas_da_vez = selecionar_ferramentas(user_text, extras=forcadas)
 
     if METRICS:
         print(
-            f"\n[{len(ferramentas_da_vez)} ferramentas: "
+            f"\n[{len(estado.ferramentas_da_vez)} ferramentas: "
             + ", ".join(
-                e["function"]["name"] for e in ferramentas_da_vez
+                e["function"]["name"] for e in estado.ferramentas_da_vez
             ) + "]"
         )
 
@@ -9416,14 +9415,14 @@ def ask_nebell(user_text, resumo=None):
         for round_number in range(MAX_TOOL_ROUNDS + 1):
             allow_tools = (
                 TOOLS_ENABLED
-                and tools_supported
+                and estado.tools_supported
                 and round_number < MAX_TOOL_ROUNDS
             )
 
             try:
                 answer, calls = run_model_round(allow_tools, opcoes)
             except ToolsUnsupported:
-                tools_supported = False
+                estado.tools_supported = False
                 print(
                     "\n[Aviso] Este modelo não aceita ferramentas; "
                     "seguindo apenas com conversa."
@@ -9483,7 +9482,7 @@ def ask_nebell(user_text, resumo=None):
 
             # A proxima rodada mantem as ferramentas que ele acabou de
             # usar, para poder corrigir a chamada se precisar.
-            ferramentas_da_vez = selecionar_ferramentas(user_text, extras=usadas)
+            estado.ferramentas_da_vez = selecionar_ferramentas(user_text, extras=usadas)
 
             print("\nNEBELL: ", end="", flush=True)
 
@@ -9647,8 +9646,7 @@ def show_menu():
 # ============================================================
 
 def text_mode():
-    global interaction_mode
-    interaction_mode = "text"
+    estado.interaction_mode = "text"
 
     speak(SAUDACAO)
     wait_for_speech()
@@ -9705,8 +9703,7 @@ def text_mode():
 # ============================================================
 
 def voice_mode():
-    global interaction_mode
-    interaction_mode = "voice"
+    estado.interaction_mode = "voice"
 
     if not microphone_available():
         speak("O microfone não está disponível. Voltando ao menu.")
@@ -10009,7 +10006,6 @@ def dispatcher_loop():
     Centralizar aqui evita duas respostas ao mesmo tempo e deixa a
     caixa de texto responder na hora, sem esperar o fim de uma escuta.
     """
-    global interaction_mode
 
     while not shutdown_event.is_set():
         try:
@@ -10034,7 +10030,7 @@ def dispatcher_loop():
             return
 
         if origem == "arquivo":
-            interaction_mode = "text"
+            estado.interaction_mode = "text"
 
             try:
                 receber_arquivo(texto)
@@ -10056,7 +10052,7 @@ def dispatcher_loop():
             request_queue.put(("sair", ""))
             continue
 
-        interaction_mode = "voice" if origem == "voz" else "text"
+        estado.interaction_mode = "voice" if origem == "voz" else "text"
 
         if origem == "voz":
             ui_message("user", texto)
