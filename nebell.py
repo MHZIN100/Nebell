@@ -808,11 +808,9 @@ Não mostre raciocínio interno nem tags de pensamento.
 speech_queue = queue.Queue()
 audio_queue = queue.Queue(maxsize=3)
 
-hud = None                  # nebell_hud.HudBridge
 request_queue = queue.Queue()
 shutdown_event = threading.Event()
 
-memoria = None             # nebell_memoria.Memoria
 ollama_nosso = [None]      # o servidor do Ollama que NOS abrimos
 ollama_estava_de_pe = [False]
 maquina_liberada = threading.Event()
@@ -870,6 +868,12 @@ class Estado:
         self.agenda = None              # nebell_agenda.Agenda
         self.sentinela = None           # nebell_sentinela.Sentinela
         self.backup = None              # nebell_backup.Backup
+
+        # Janela/HUD: a ponte com a interface grafica (aberta no arranque).
+        self.hud = None                  # nebell_hud.HudBridge
+
+        # Memoria de longo prazo: o banco (SQLite) com conversas, fatos e projetos.
+        self.memoria = None             # nebell_memoria.Memoria
 
         # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
@@ -1372,8 +1376,8 @@ def feed_level(pedaco):
 
     estado._level_sent_at = agora
 
-    if hud is not None:
-        hud.set_level(nivel_rms(pedaco))
+    if estado.hud is not None:
+        estado.hud.set_level(nivel_rms(pedaco))
 
 
 def feed_mic_level(pedaco):
@@ -1388,7 +1392,7 @@ def feed_mic_level(pedaco):
     audio e um erro aqui nao pode derrubar a escuta.
     """
 
-    if hud is None or mic_mudo.is_set() or busy_event.is_set():
+    if estado.hud is None or mic_mudo.is_set() or busy_event.is_set():
         return
 
     agora = time.time()
@@ -1399,7 +1403,7 @@ def feed_mic_level(pedaco):
     estado._mic_level_sent_at = agora
 
     try:
-        hud.set_level(nivel_rms(pedaco))
+        estado.hud.set_level(nivel_rms(pedaco))
     except Exception:
         pass
 
@@ -1459,7 +1463,7 @@ def play_with_pyaudio(data):
         pedaco = quadros[inicio:inicio + bloco]
 
         # A HUD recebe o nivel real do que esta sendo falado.
-        if hud is not None and largura == 2:
+        if estado.hud is not None and largura == 2:
             feed_level(pedaco)
 
         estado._output_stream.write(pedaco)
@@ -1769,13 +1773,13 @@ def wait_for_speech():
 
 def ui_state(situacao):
     """Reflete na HUD o que o NEBELL esta fazendo agora."""
-    if hud is not None:
-        hud.set_state(situacao)
+    if estado.hud is not None:
+        estado.hud.set_state(situacao)
 
 
 def ui_message(papel, texto):
-    if hud is not None:
-        hud.add_message(papel, texto)
+    if estado.hud is not None:
+        estado.hud.add_message(papel, texto)
 
 
 # Quantas vezes por segundo a janela e atualizada enquanto ele gera.
@@ -1796,7 +1800,7 @@ def ui_stream(texto, forcar=False):
     Antes a janela recebia UMA mensagem, no fim, depois de ele terminar
     de falar: quem estava olhando nao sabia se havia algo acontecendo.
     """
-    if hud is None or not texto:
+    if estado.hud is None or not texto:
         return
 
     agora = time.monotonic()
@@ -1806,19 +1810,19 @@ def ui_stream(texto, forcar=False):
 
     _stream_em[0] = agora
     texto_na_janela[0] = True
-    hud.stream_message(texto)
+    estado.hud.stream_message(texto)
 
 
 def ui_fechar_stream():
     """Fecha a bolha em andamento: o texto para de ser 'em andamento'."""
-    if hud is not None:
-        hud.fechar_stream()
+    if estado.hud is not None:
+        estado.hud.fechar_stream()
 
 
 def ui_trabalhando(texto=""):
     """A linha de 'trabalhando nisso' no centro da janela."""
-    if hud is not None:
-        hud.trabalhando(texto)
+    if estado.hud is not None:
+        estado.hud.trabalhando(texto)
 
 
 # ============================================================
@@ -1881,9 +1885,9 @@ def descrever_trabalho(nome_da_ferramenta):
         nome_da_ferramenta, f"usando {nome_da_ferramenta}"
     )
 
-    if hud is not None:
+    if estado.hud is not None:
         try:
-            hud.para_ferramenta(nome_da_ferramenta)
+            estado.hud.para_ferramenta(nome_da_ferramenta)
         except Exception:
             pass
 
@@ -1895,7 +1899,7 @@ def vigia_do_trabalho(comecou):
     Roda em uma thread enquanto o pedido esta sendo atendido, e sai
     sozinho quando a resposta comeca a sair ou o pedido termina.
     """
-    if hud is None:
+    if estado.hud is None:
         return
 
     avisou = False
@@ -2329,10 +2333,10 @@ def trocar_voz(chave):
 
     _salvar_voz_no_config(chave)
 
-    if hud is not None:
+    if estado.hud is not None:
         try:
-            hud.set_stats(voice=rotulo)
-            hud.set_voz_atual(chave)
+            estado.hud.set_stats(voice=rotulo)
+            estado.hud.set_voz_atual(chave)
         except Exception:
             nebell_log and nebell_log.engolido("hud: refletir troca de voz")
 
@@ -2384,8 +2388,8 @@ def garantir_voz():
 
         print(f"[Voz] Agora falando com a voz {nova.parent.name}.")
 
-        if hud is not None:
-            hud.set_stats(voice=f"Piper · {nova.parent.name}")
+        if estado.hud is not None:
+            estado.hud.set_stats(voice=f"Piper · {nova.parent.name}")
             ui_message("nebell", "Voz atualizada, senhor.")
 
     except Exception as exc:
@@ -2804,14 +2808,14 @@ def warm_up_model():
 
 def on_microphone_change(manager):
     """Avisa a interface quando o microfone em uso muda."""
-    if hud is None:
+    if estado.hud is None:
         return
 
-    hud.set_mics(
+    estado.hud.set_mics(
         [d.to_dict() for d in manager.devices],
         manager.device.index if manager.device else None,
     )
-    hud.set_stats(
+    estado.hud.set_stats(
         mic=manager.device.short() if manager.device else "indisponível"
     )
 
@@ -3561,27 +3565,26 @@ def queue_sentences(buffer, force=False):
 
 def abrir_memoria():
     """Abre o banco de longo prazo e traz a memoria antiga, se houver."""
-    global memoria
 
     if nebell_memoria is None:
         print("[Memória] nebell_memoria.py não encontrado; sem memória longa.")
         return False
 
-    memoria = nebell_memoria.Memoria(MEMORY_DB)
+    estado.memoria = nebell_memoria.Memoria(MEMORY_DB)
 
-    if not memoria.abrir():
-        memoria = None
+    if not estado.memoria.abrir():
+        estado.memoria = None
         return False
 
-    trazidos = memoria.importar_json_antigo(LEGACY_MEMORY_FILE)
+    trazidos = estado.memoria.importar_json_antigo(LEGACY_MEMORY_FILE)
 
     if trazidos:
         print(f"[Memória] Trouxe {trazidos} lembrança(s) da versão anterior.")
 
-    memoria.iniciar_conversa(modo="hud" if USE_HUD else "console")
-    memoria.podar()
+    estado.memoria.iniciar_conversa(modo="hud" if USE_HUD else "console")
+    estado.memoria.podar()
 
-    numeros = memoria.numeros()
+    numeros = estado.memoria.numeros()
     print(
         f"[Memória] {numeros['conversas']} conversa(s), "
         f"{numeros['mensagens']} mensagem(ns), "
@@ -3711,8 +3714,8 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
         if pendentes:
             extra += f"\nLEMBRETES MARCADOS: {pendentes}\n"
 
-    if memoria is not None:
-        extra += memoria.briefing()
+    if estado.memoria is not None:
+        extra += estado.memoria.briefing()
 
     if estado.dev_mode:
         extra += (
@@ -3744,12 +3747,12 @@ def listar_conversas(limite=12):
     (titulo, ou o inicio do resumo, ou 'conversa'), quando foi e quantas
     mensagens tem. Lista vazia quando nao ha memoria.
     """
-    if memoria is None:
+    if estado.memoria is None:
         return []
 
     saida = []
 
-    for c in memoria.listar_conversas(limite=limite):
+    for c in estado.memoria.listar_conversas(limite=limite):
         titulo = (c.get("titulo") or "").strip()
         resumo = (c.get("resumo") or "").strip()
         rotulo = titulo or (resumo[:48] + ("…" if len(resumo) > 48 else "")) \
@@ -3775,13 +3778,13 @@ def carregar_conversa(id_conversa):
     memoria ou o id nao existe (aí nada muda).
     """
 
-    if memoria is None:
+    if estado.memoria is None:
         return False
 
-    if not memoria.ativar_conversa(id_conversa):
+    if not estado.memoria.ativar_conversa(id_conversa):
         return False
 
-    mensagens = memoria.transcricao(id_conversa, limite=MAX_HISTORY_MESSAGES)
+    mensagens = estado.memoria.transcricao(id_conversa, limite=MAX_HISTORY_MESSAGES)
 
     novo = [{"role": "system", "content": build_system_prompt()}]
     for m in mensagens:
@@ -3789,11 +3792,11 @@ def carregar_conversa(id_conversa):
             novo.append({"role": m["papel"], "content": m["conteudo"]})
     estado.history = novo
 
-    if hud is not None:
-        hud.limpar_conversa()
+    if estado.hud is not None:
+        estado.hud.limpar_conversa()
         for m in mensagens:
             papel = "user" if m["papel"] == "user" else "nebell"
-            hud.add_message(papel, m["conteudo"])
+            estado.hud.add_message(papel, m["conteudo"])
 
     return True
 
@@ -3802,15 +3805,15 @@ def hud_abrir_conversa(id_conversa):
     """A janela pediu para continuar uma conversa antiga do historico."""
     if carregar_conversa(id_conversa):
         ui_state("idle")
-    elif hud is not None:
-        hud.add_message("nebell", "Não consegui abrir essa conversa, senhor.")
+    elif estado.hud is not None:
+        estado.hud.add_message("nebell", "Não consegui abrir essa conversa, senhor.")
 
 
 # --- ferramentas de memoria ---------------------------------
 
 def tool_lembrar(fato, categoria=None):
     """Guarda um fato ou uma preferencia para sempre."""
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
     categoria = normalize(categoria or "geral")
@@ -3818,7 +3821,7 @@ def tool_lembrar(fato, categoria=None):
     if categoria not in ("geral", "preferencia", "pessoal", "tecnico"):
         categoria = "geral"
 
-    deu_certo, mensagem = memoria.guardar_fato(fato, categoria)
+    deu_certo, mensagem = estado.memoria.guardar_fato(fato, categoria)
 
     if deu_certo:
         refresh_system_prompt()
@@ -3827,10 +3830,10 @@ def tool_lembrar(fato, categoria=None):
 
 
 def tool_esquecer(assunto):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    quantos = memoria.esquecer_fato(assunto)
+    quantos = estado.memoria.esquecer_fato(assunto)
 
     if not quantos:
         return "Não encontrei nada com esse assunto na memória."
@@ -3840,10 +3843,10 @@ def tool_esquecer(assunto):
 
 
 def tool_listar_memoria():
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    fatos = memoria.listar_fatos()
+    fatos = estado.memoria.listar_fatos()
 
     if not fatos:
         return "A memória está vazia."
@@ -3858,7 +3861,7 @@ def tool_listar_memoria():
     for categoria, textos in por_categoria.items():
         partes.append(f"{categoria}: " + "; ".join(textos))
 
-    numeros = memoria.numeros()
+    numeros = estado.memoria.numeros()
     partes.append(
         f"(ao todo: {numeros['conversas']} conversas, "
         f"{numeros['projetos']} projetos, {numeros['arquivos']} arquivos, "
@@ -3869,7 +3872,7 @@ def tool_listar_memoria():
 
 def tool_recordar(busca, quantos=None):
     """Procura no que ja foi conversado em sessoes anteriores."""
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
     try:
@@ -3877,7 +3880,7 @@ def tool_recordar(busca, quantos=None):
     except (TypeError, ValueError):
         limite = 5
 
-    achados = memoria.buscar_mensagens(busca, limite=limite)
+    achados = estado.memoria.buscar_mensagens(busca, limite=limite)
 
     if not achados:
         return (
@@ -3900,7 +3903,7 @@ def tool_recordar(busca, quantos=None):
 
 
 def tool_conversas_anteriores(quantas=None):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
     try:
@@ -3908,7 +3911,7 @@ def tool_conversas_anteriores(quantas=None):
     except (TypeError, ValueError):
         limite = 4
 
-    conversas = memoria.conversas_recentes(limite=limite)
+    conversas = estado.memoria.conversas_recentes(limite=limite)
 
     if not conversas:
         return "Ainda não tenho resumos de conversas anteriores."
@@ -3923,10 +3926,10 @@ def tool_conversas_anteriores(quantas=None):
 # --- ferramentas de projeto ---------------------------------
 
 def tool_salvar_projeto(nome, descricao=None, status=None, caminho=None):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    deu_certo, mensagem = memoria.salvar_projeto(
+    deu_certo, mensagem = estado.memoria.salvar_projeto(
         nome, descricao, status, caminho
     )
 
@@ -3937,12 +3940,12 @@ def tool_salvar_projeto(nome, descricao=None, status=None, caminho=None):
 
 
 def tool_listar_projetos(status=None):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
     # normalize(None) devolve a string "none", que e verdadeira e
     # filtraria por um status que nao existe: o teste pegou isso.
-    projetos = memoria.listar_projetos(
+    projetos = estado.memoria.listar_projetos(
         status=normalize(status) if status else None
     )
 
@@ -3967,10 +3970,10 @@ def tool_listar_projetos(status=None):
 
 
 def tool_anotar_projeto(nome, nota):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    deu_certo, mensagem = memoria.anotar_projeto(nome, nota)
+    deu_certo, mensagem = estado.memoria.anotar_projeto(nome, nota)
 
     if deu_certo:
         refresh_system_prompt()
@@ -3979,10 +3982,10 @@ def tool_anotar_projeto(nome, nota):
 
 
 def tool_ver_projeto(nome):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    projeto, notas = memoria.notas_do_projeto(nome)
+    projeto, notas = estado.memoria.notas_do_projeto(nome)
 
     if projeto is None:
         return f"Não tenho um projeto chamado {nome}."
@@ -4002,7 +4005,7 @@ def tool_ver_projeto(nome):
             for n in notas
         )
 
-    arquivos = memoria.buscar_arquivos(projeto["nome"], limite=5)
+    arquivos = estado.memoria.buscar_arquivos(projeto["nome"], limite=5)
 
     if arquivos:
         partes.append(
@@ -4015,18 +4018,18 @@ def tool_ver_projeto(nome):
 # --- ferramentas de arquivo ---------------------------------
 
 def tool_guardar_arquivo(caminho, resumo=None, projeto=None):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    deu_certo, mensagem = memoria.registrar_arquivo(caminho, resumo, projeto)
+    deu_certo, mensagem = estado.memoria.registrar_arquivo(caminho, resumo, projeto)
     return mensagem
 
 
 def tool_arquivos_anteriores(busca=None):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    arquivos = memoria.buscar_arquivos(busca or "", limite=12)
+    arquivos = estado.memoria.buscar_arquivos(busca or "", limite=12)
 
     if not arquivos:
         return (
@@ -4064,7 +4067,7 @@ def tool_ensinar_comando(gatilho, acao, ferramenta=None, argumentos=None):
 
     Com `ferramenta`, a acao e executada direto, sem passar pelo modelo.
     """
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
     if ferramenta and ferramenta not in TOOL_FUNCTIONS:
@@ -4079,7 +4082,7 @@ def tool_ensinar_comando(gatilho, acao, ferramenta=None, argumentos=None):
         except json.JSONDecodeError:
             pass
 
-    deu_certo, mensagem = memoria.ensinar_comando(
+    deu_certo, mensagem = estado.memoria.ensinar_comando(
         gatilho, acao, ferramenta, argumentos
     )
 
@@ -4090,10 +4093,10 @@ def tool_ensinar_comando(gatilho, acao, ferramenta=None, argumentos=None):
 
 
 def tool_listar_comandos():
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    comandos = memoria.listar_comandos()
+    comandos = estado.memoria.listar_comandos()
 
     if not comandos:
         return "Você ainda não me ensinou nenhum comando."
@@ -4115,10 +4118,10 @@ def tool_listar_comandos():
 
 
 def tool_esquecer_comando(gatilho):
-    if memoria is None:
+    if estado.memoria is None:
         return "A memória de longo prazo não está disponível."
 
-    quantos = memoria.esquecer_comando(gatilho)
+    quantos = estado.memoria.esquecer_comando(gatilho)
 
     if not quantos:
         return "Não encontrei um comando com esse gatilho."
@@ -4135,10 +4138,10 @@ def aplicar_comando_aprendido(texto):
     acao roda na hora e o modelo so comenta o resultado; sem ela, a
     ordem entra como instrucao para esta resposta.
     """
-    if memoria is None:
+    if estado.memoria is None:
         return None, None
 
-    comando = memoria.casar_comando(texto)
+    comando = estado.memoria.casar_comando(texto)
 
     if comando is None:
         return None, None
@@ -4517,10 +4520,10 @@ def confirm_action(spoken, details=""):
     if details:
         print(details)
 
-    na_janela = hud is not None and hud.active
+    na_janela = estado.hud is not None and estado.hud.active
 
     if na_janela:
-        hud.add_message(
+        estado.hud.add_message(
             "nebell",
             f"{spoken}\n{details}\n\nAutoriza? Responda sim ou não.".strip(),
         )
@@ -4547,16 +4550,16 @@ def confirm_action(spoken, details=""):
             decisao = ler_resposta_de_confirmacao(texto)
 
             if decisao is True:
-                hud.add_message("nebell", "Autorizado. Prosseguindo.")
+                estado.hud.add_message("nebell", "Autorizado. Prosseguindo.")
                 return True
 
             if decisao is False:
-                hud.add_message("nebell", "Entendido, não vou fazer.")
+                estado.hud.add_message("nebell", "Entendido, não vou fazer.")
                 return False
 
             # Nao era resposta: devolve para a fila para ser atendido
             # como um pedido novo, em vez de engolir a mensagem.
-            hud.add_message(
+            estado.hud.add_message(
                 "nebell",
                 "Não entendi como sim ou não, então cancelei a ação "
                 "anterior e vou tratar isso como um novo pedido.",
@@ -4564,7 +4567,7 @@ def confirm_action(spoken, details=""):
             request_queue.put(item)
             return False
 
-        hud.add_message("nebell", "Sem resposta. Ação cancelada.")
+        estado.hud.add_message("nebell", "Sem resposta. Ação cancelada.")
         return False
 
     # Por voz.
@@ -6397,8 +6400,8 @@ def human_size(numero):
 def memoria_total_e_livre():
     try:
         import psutil
-        memoria = psutil.virtual_memory()
-        return memoria.total, memoria.available
+        ram = psutil.virtual_memory()
+        return ram.total, ram.available
     except Exception:
         pass
 
@@ -6580,17 +6583,17 @@ def tool_listar_processos(filtro=None, limite=15):
         for processo in psutil.process_iter(["name", "memory_info"]):
             try:
                 nome = processo.info["name"] or "?"
-                memoria = processo.info["memory_info"].rss
-                processos.append((memoria, nome))
+                uso_mem = processo.info["memory_info"].rss
+                processos.append((uso_mem, nome))
             except Exception:
                 continue
 
         processos.sort(reverse=True)
 
-        for memoria, nome in processos:
+        for uso_mem, nome in processos:
             if filtro and normalize(filtro) not in normalize(nome):
                 continue
-            linhas.append(f"{nome}: {human_size(memoria)}")
+            linhas.append(f"{nome}: {human_size(uso_mem)}")
             if len(linhas) >= limite:
                 break
 
@@ -6981,11 +6984,11 @@ def tool_apagar_arquivo(caminho):
 
 def registrar_arquivo_na_memoria(caminho, resumo=""):
     """Anota no banco que este arquivo passou por aqui. Falha em silencio."""
-    if memoria is None:
+    if estado.memoria is None:
         return
 
     try:
-        memoria.registrar_arquivo(str(caminho), resumo or None, None)
+        estado.memoria.registrar_arquivo(str(caminho), resumo or None, None)
     except Exception:
         nebell_log and nebell_log.engolido("memoria: registrar arquivo")
 
@@ -7763,7 +7766,7 @@ def tool_diagnostico():
     linhas.append(f"- voz: {VOICE_MODEL.parent.name if VOICE_MODEL else '?'}")
     linhas.append(f"- perfil: {estado.perfil_atual}")
     linhas.append(f"- áudio: {estado.audio_backend}")
-    linhas.append(f"- memória longa: {'ok' if memoria else 'desligada'}")
+    linhas.append(f"- memória longa: {'ok' if estado.memoria else 'desligada'}")
     linhas.append(f"- agenda: {'ligada' if estado.agenda else 'desligada'}")
     linhas.append(
         f"- sentinela: {'vigiando' if estado.sentinela and estado.sentinela.ligada else 'parada'}"
@@ -9318,8 +9321,8 @@ def ask_nebell(user_text, resumo=None):
     busy_event.set()
     ui_state("thinking")
 
-    if memoria is not None:
-        memoria.registrar_mensagem("user", resumo or user_text)
+    if estado.memoria is not None:
+        estado.memoria.registrar_mensagem("user", resumo or user_text)
 
     if interno:
         resultado_direto, instrucao = None, None
@@ -9337,8 +9340,8 @@ def ask_nebell(user_text, resumo=None):
         estado.history.append({"role": "assistant", "content": shortcut})
         trim_history()
 
-        if memoria is not None:
-            memoria.registrar_mensagem("assistant", shortcut)
+        if estado.memoria is not None:
+            estado.memoria.registrar_mensagem("assistant", shortcut)
 
         ui_message("nebell", shortcut)
         ui_state("speaking")
@@ -9512,7 +9515,7 @@ def ask_nebell(user_text, resumo=None):
         # A resposta já apareceu na janela, letra por letra. Fechar a
         # bolha em vez de mandar o texto de novo: `addMessage` criaria
         # uma segunda bolha com o mesmo conteúdo.
-        if hud is not None:
+        if estado.hud is not None:
             if texto_na_janela[0]:
                 ui_fechar_stream()
             else:
@@ -9530,8 +9533,8 @@ def ask_nebell(user_text, resumo=None):
             except Exception as exc:
                 print(f"\n[Erro ao gravar o código da resposta] {exc}")
 
-        if memoria is not None and resposta:
-            memoria.registrar_mensagem("assistant", resposta)
+        if estado.memoria is not None and resposta:
+            estado.memoria.registrar_mensagem("assistant", resposta)
 
         trim_history()
         busy_event.clear()
@@ -9846,8 +9849,8 @@ def hud_set_esforco(nivel):
                 "código e lógica.",
     }[nivel]
 
-    if hud is not None:
-        hud.set_esforco_nivel(nivel)
+    if estado.hud is not None:
+        estado.hud.set_esforco_nivel(nivel)
 
     ui_message("nebell", recado)
     print(f"\n[Esforço] {nivel}")
@@ -9872,9 +9875,9 @@ def hud_set_mudo(ligado):
         print("\n[Microfone] Religado pelo usuário.")
         ui_message("nebell", "Microfone religado, estou ouvindo de novo.")
 
-    if hud is not None:
+    if estado.hud is not None:
         try:
-            hud.mostrar_mudo(mic_mudo.is_set())
+            estado.hud.mostrar_mudo(mic_mudo.is_set())
         except Exception:
             nebell_log and nebell_log.engolido("hud: refletir mudo")
 
@@ -9886,13 +9889,13 @@ def hud_ready():
     if estado.mic_manager is not None:
         on_microphone_change(estado.mic_manager)
 
-    hud.set_esforco_nivel(esforco_atual[0])
-    hud.set_stats(voice=estado.VOZ_ROTULO)
+    estado.hud.set_esforco_nivel(esforco_atual[0])
+    estado.hud.set_stats(voice=estado.VOZ_ROTULO)
 
     # Seletor de voz (só as vozes que funcionam aqui) e estado do mudo.
     try:
-        hud.set_vozes(vozes_disponiveis(), _chave_voz_atual())
-        hud.mostrar_mudo(mic_mudo.is_set())
+        estado.hud.set_vozes(vozes_disponiveis(), _chave_voz_atual())
+        estado.hud.mostrar_mudo(mic_mudo.is_set())
     except Exception:
         nebell_log and nebell_log.engolido("hud: estado inicial de voz/mudo")
 
@@ -10014,8 +10017,8 @@ def dispatcher_loop():
             speak("Encerrando o NEBELL. Até mais.")
             wait_for_speech()
 
-            if hud is not None:
-                hud.destroy()
+            if estado.hud is not None:
+                estado.hud.destroy()
 
             return
 
@@ -10117,7 +10120,7 @@ def medir_latencia():
 
 def atualizar_estatisticas(uma_vez=False):
     """Alimenta o painel da HUD. Em laco, a cada poucos segundos."""
-    if hud is None:
+    if estado.hud is None:
         return
 
     primeira = True
@@ -10127,7 +10130,7 @@ def atualizar_estatisticas(uma_vez=False):
         # Com a janela fechada ou escondida nao ha painel para alimentar,
         # e cada volta destas chama a nvidia-smi: processador gasto para
         # ninguem ver. No modo jogo isso se sente.
-        if not (uma_vez or hud.active):
+        if not (uma_vez or estado.hud.active):
             shutdown_event.wait(2.0)
             continue
 
@@ -10155,7 +10158,7 @@ def atualizar_estatisticas(uma_vez=False):
                 except Exception:
                     pass
 
-            hud.set_stats(**dados)
+            estado.hud.set_stats(**dados)
             primeira = False
 
         except Exception:
@@ -10169,23 +10172,22 @@ def atualizar_estatisticas(uma_vez=False):
 
 def run_hud_mode():
     """Monta a janela e roda o NEBELL dentro dela."""
-    global hud
 
     nebell_hud.BIG_BANG = BIG_BANG   # a página lê isto ao ser gravada
-    hud = nebell_hud.HudBridge(HUD_FILE)
-    hud.on_submit = hud_submit
-    hud.on_files = hud_files
-    hud.on_set_mic = hud_set_mic
-    hud.on_stop = hud_stop
-    hud.on_set_esforco = hud_set_esforco
-    hud.on_set_voz = hud_set_voz
-    hud.on_set_mudo = hud_set_mudo
-    hud.on_abrir_conversa = hud_abrir_conversa
-    hud.obter_conversas = listar_conversas
-    hud.on_ready = hud_ready
+    estado.hud = nebell_hud.HudBridge(HUD_FILE)
+    estado.hud.on_submit = hud_submit
+    estado.hud.on_files = hud_files
+    estado.hud.on_set_mic = hud_set_mic
+    estado.hud.on_stop = hud_stop
+    estado.hud.on_set_esforco = hud_set_esforco
+    estado.hud.on_set_voz = hud_set_voz
+    estado.hud.on_set_mudo = hud_set_mudo
+    estado.hud.on_abrir_conversa = hud_abrir_conversa
+    estado.hud.obter_conversas = listar_conversas
+    estado.hud.on_ready = hud_ready
 
-    if not hud.create():
-        hud = None
+    if not estado.hud.create():
+        estado.hud = None
         return False
 
     print("Abrindo a interface...")
@@ -10233,14 +10235,14 @@ def run_hud_mode():
             import traceback
             traceback.print_exc()
 
-            if hud is not None:
+            if estado.hud is not None:
                 ui_message(
                     "nebell",
                     f"Falhei ao iniciar os sistemas internos: {exc}",
                 )
 
     try:
-        hud.run(trabalhador)
+        estado.hud.run(trabalhador)
     finally:
         shutdown_event.set()
 
@@ -10255,7 +10257,7 @@ def resumir_sessao():
     Se o Ollama nao responder rapido, segue sem resumo: um resumo e
     bom ter, mas nao vale travar o encerramento.
     """
-    if memoria is None:
+    if estado.memoria is None:
         return None
 
     # Uma vez por sessao. O backup do encerramento resume antes de
@@ -10267,10 +10269,10 @@ def resumir_sessao():
 
     resumo_feito.set()
 
-    falas = memoria.material_para_resumo(limite=30)
+    falas = estado.memoria.material_para_resumo(limite=30)
 
     if len(falas) < 4:
-        memoria.encerrar_conversa()
+        estado.memoria.encerrar_conversa()
         return None
 
     transcricao = "\n".join(
@@ -10318,7 +10320,7 @@ def resumir_sessao():
         if primeira:
             resumo = "Conversamos sobre: " + primeira[:200]
 
-    memoria.encerrar_conversa(resumo=resumo)
+    estado.memoria.encerrar_conversa(resumo=resumo)
 
     if resumo:
         print(f"\n[Memória] Resumo guardado: {resumo[:120]}")
@@ -10351,9 +10353,9 @@ def avisar_do_nada(texto, gravidade="aviso"):
     ui_message("nebell", prefixo + texto)
     speak(prefixo + texto)
 
-    if memoria is not None:
+    if estado.memoria is not None:
         try:
-            memoria.registrar_mensagem("nebell", prefixo + texto)
+            estado.memoria.registrar_mensagem("nebell", prefixo + texto)
         except Exception:
             nebell_log and nebell_log.engolido("memoria: registrar mensagem")
 
@@ -10361,12 +10363,12 @@ def avisar_do_nada(texto, gravidade="aviso"):
 def abrir_agenda():
     """Liga a agenda de lembretes, reusando o banco da memoria."""
 
-    if not AGENDA_LIGADA or nebell_agenda is None or memoria is None:
+    if not AGENDA_LIGADA or nebell_agenda is None or estado.memoria is None:
         return False
 
     try:
         estado.agenda = nebell_agenda.Agenda(
-            memoria,
+            estado.memoria,
             ao_disparar=lambda texto: avisar_do_nada(texto, "aviso"),
             log=print,
         )
@@ -10413,12 +10415,12 @@ def copiar_memoria_no_fim():
 def abrir_backup():
     """Liga o guardião da memória e faz a primeira cópia."""
 
-    if not BACKUP_LIGADO or nebell_backup is None or memoria is None:
+    if not BACKUP_LIGADO or nebell_backup is None or estado.memoria is None:
         return False
 
     try:
         estado.backup = nebell_backup.Backup(
-            MEMORY_DB, BACKUP_DIR, memoria=memoria, log=print,
+            MEMORY_DB, BACKUP_DIR, memoria=estado.memoria, log=print,
             intervalo=BACKUP_INTERVALO, geracoes=BACKUP_GERACOES,
         )
 
@@ -10496,7 +10498,7 @@ def fechar_memoria():
     com "0 conversa(s), 0 mensagem(ns)" — foi exatamente o que apareceu
     no memorias.txt da máquina do usuário.
     """
-    if memoria is None:
+    if estado.memoria is None:
         return
 
     try:
@@ -10512,7 +10514,7 @@ def fechar_memoria():
         except Exception as exc:
             print(f"[Backup] Não consegui gravar o relatório: {exc}")
 
-    memoria.fechar()
+    estado.memoria.fechar()
 
 
 def encerrar(threads=()):

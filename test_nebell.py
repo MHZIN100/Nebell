@@ -234,8 +234,8 @@ def abrir_memoria_de_teste():
     """Memória nova em cada teste, para um não contaminar o outro."""
     import nebell_memoria
 
-    if J.memoria is not None:
-        J.memoria.fechar()
+    if J.estado.memoria is not None:
+        J.estado.memoria.fechar()
 
     caminho = TMP / "memoria.db"
 
@@ -244,10 +244,10 @@ def abrir_memoria_de_teste():
         if alvo.exists():
             alvo.unlink()
 
-    J.memoria = nebell_memoria.Memoria(caminho, log=lambda *a: None)
-    J.memoria.abrir()
-    J.memoria.iniciar_conversa("teste")
-    return J.memoria
+    J.estado.memoria = nebell_memoria.Memoria(caminho, log=lambda *a: None)
+    J.estado.memoria.abrir()
+    J.estado.memoria.iniciar_conversa("teste")
+    return J.estado.memoria
 
 
 def flush_speech():
@@ -837,23 +837,23 @@ class TestMemoria(NebellTest):
         J.tool_lembrar("prefere respostas curtas", "preferencia")
         self.assertTrue(J.MEMORY_DB.exists())
 
-        textos = [f["texto"] for f in J.memoria.listar_fatos()]
+        textos = [f["texto"] for f in J.estado.memoria.listar_fatos()]
         self.assertIn("prefere respostas curtas", textos)
 
     def test_nao_duplica(self):
         J.tool_lembrar("gosta de café")
         resultado = J.tool_lembrar("Gosta de Café")
         self.assertIn("já está", resultado)
-        self.assertEqual(len(J.memoria.listar_fatos()), 1)
+        self.assertEqual(len(J.estado.memoria.listar_fatos()), 1)
 
     def test_categoria_invalida_vira_geral(self):
         J.tool_lembrar("algo", "categoria inventada")
-        self.assertEqual(J.memoria.listar_fatos()[0]["categoria"], "geral")
+        self.assertEqual(J.estado.memoria.listar_fatos()[0]["categoria"], "geral")
 
     def test_esquecer(self):
         J.tool_lembrar("tem um carro seguidor de linha")
         self.assertIn("Removi", J.tool_esquecer("seguidor de linha"))
-        self.assertEqual(J.memoria.listar_fatos(), [])
+        self.assertEqual(J.estado.memoria.listar_fatos(), [])
 
     def test_esquecer_sem_achar(self):
         self.assertIn("Não encontrei", J.tool_esquecer("nada disso"))
@@ -876,10 +876,10 @@ class TestHistoricoDeConversas(NebellTest):
     numa delas (repovoando o history)."""
 
     def _conversa(self, *falas):
-        J.memoria.iniciar_conversa("texto")
+        J.estado.memoria.iniciar_conversa("texto")
         for papel, texto in falas:
-            J.memoria.registrar_mensagem(papel, texto)
-        return J.memoria.conversa_id
+            J.estado.memoria.registrar_mensagem(papel, texto)
+        return J.estado.memoria.conversa_id
 
     def test_listar_conversas_formata_para_a_janela(self):
         alvo = self._conversa(("user", "oi"), ("assistant", "olá, senhor"))
@@ -892,7 +892,7 @@ class TestHistoricoDeConversas(NebellTest):
         self.assertIn("quando", item)
 
     def test_listar_conversas_sem_memoria(self):
-        with mock.patch.object(J, "memoria", None):
+        with mock.patch.object(J.estado, "memoria", None):
             self.assertEqual(J.listar_conversas(), [])
 
     def test_carregar_conversa_repovoa_o_history(self):
@@ -903,7 +903,7 @@ class TestHistoricoDeConversas(NebellTest):
         self._conversa(("user", "outra coisa"))
 
         self.assertTrue(J.carregar_conversa(alvo))
-        self.assertEqual(J.memoria.conversa_id, alvo)
+        self.assertEqual(J.estado.memoria.conversa_id, alvo)
 
         papeis = [m["role"] for m in J.estado.history]
         self.assertEqual(papeis, ["system", "user", "assistant"])
@@ -913,7 +913,7 @@ class TestHistoricoDeConversas(NebellTest):
         self.assertFalse(J.carregar_conversa(999999))
 
     def test_carregar_conversa_sem_memoria(self):
-        with mock.patch.object(J, "memoria", None):
+        with mock.patch.object(J.estado, "memoria", None):
             self.assertFalse(J.carregar_conversa(1))
 
     def test_listar_mostra_os_numeros(self):
@@ -921,15 +921,15 @@ class TestHistoricoDeConversas(NebellTest):
         self.assertIn("conversas", J.tool_listar_memoria())
 
     def test_sem_banco_as_ferramentas_avisam(self):
-        guardado = J.memoria
-        J.memoria = None
+        guardado = J.estado.memoria
+        J.estado.memoria = None
         try:
             for resultado in (J.tool_lembrar("x"), J.tool_recordar("x"),
                               J.tool_listar_projetos(), J.tool_listar_comandos(),
                               J.tool_arquivos_anteriores()):
                 self.assertIn("não está disponível", resultado)
         finally:
-            J.memoria = guardado
+            J.estado.memoria = guardado
 
 
 class TestConversaGravada(NebellTest):
@@ -939,7 +939,7 @@ class TestConversaGravada(NebellTest):
         with mock.patch.object(J, "session", fake):
             J.ask_nebell("me explique como funciona um capacitor")
 
-        falas = J.memoria.material_para_resumo()
+        falas = J.estado.memoria.material_para_resumo()
         papeis = [f["papel"] for f in falas]
         self.assertIn("user", papeis)
         self.assertIn("assistant", papeis)
@@ -952,15 +952,15 @@ class TestConversaGravada(NebellTest):
         with mock.patch.object(J, "session", fake):
             J.ask_nebell("que horas são")
 
-        self.assertEqual(len(J.memoria.material_para_resumo()), 2)
+        self.assertEqual(len(J.estado.memoria.material_para_resumo()), 2)
         flush_speech()
 
     def test_recordar_acha_conversa_antiga(self):
-        J.memoria.encerrar_conversa(resumo="falamos do carrinho")
-        J.memoria.iniciar_conversa("teste")
-        J.memoria.registrar_mensagem("user", "o driver HW-095 esquenta muito")
-        J.memoria.encerrar_conversa(resumo="driver esquentando")
-        J.memoria.iniciar_conversa("teste")
+        J.estado.memoria.encerrar_conversa(resumo="falamos do carrinho")
+        J.estado.memoria.iniciar_conversa("teste")
+        J.estado.memoria.registrar_mensagem("user", "o driver HW-095 esquenta muito")
+        J.estado.memoria.encerrar_conversa(resumo="driver esquentando")
+        J.estado.memoria.iniciar_conversa("teste")
 
         resultado = J.tool_recordar("HW-095")
         self.assertIn("esquenta", resultado)
@@ -971,8 +971,8 @@ class TestConversaGravada(NebellTest):
         self.assertIn("primeira vez", resultado)
 
     def test_conversas_anteriores(self):
-        J.memoria.encerrar_conversa(resumo="ajustamos a voz do Piper")
-        J.memoria.iniciar_conversa("teste")
+        J.estado.memoria.encerrar_conversa(resumo="ajustamos a voz do Piper")
+        J.estado.memoria.iniciar_conversa("teste")
         self.assertIn("Piper", J.tool_conversas_anteriores())
 
     def test_sem_resumo_ainda(self):
@@ -980,8 +980,8 @@ class TestConversaGravada(NebellTest):
 
     def test_resumo_da_sessao_usa_o_modelo(self):
         for i in range(3):
-            J.memoria.registrar_mensagem("user", f"pergunta {i}")
-            J.memoria.registrar_mensagem("assistant", f"resposta {i}")
+            J.estado.memoria.registrar_mensagem("user", f"pergunta {i}")
+            J.estado.memoria.registrar_mensagem("assistant", f"resposta {i}")
 
         resposta = mock.Mock()
         resposta.json.return_value = {
@@ -996,8 +996,8 @@ class TestConversaGravada(NebellTest):
 
     def test_resumo_cai_para_reserva_sem_o_modelo(self):
         for i in range(3):
-            J.memoria.registrar_mensagem("user", f"pergunta sobre o tema {i}")
-            J.memoria.registrar_mensagem("assistant", f"resposta {i}")
+            J.estado.memoria.registrar_mensagem("user", f"pergunta sobre o tema {i}")
+            J.estado.memoria.registrar_mensagem("assistant", f"resposta {i}")
 
         with mock.patch.object(J.session, "post", side_effect=Exception("off")):
             resumo = J.resumir_sessao()
@@ -1005,7 +1005,7 @@ class TestConversaGravada(NebellTest):
         self.assertIn("Conversamos sobre", resumo)
 
     def test_conversa_curta_nao_gera_resumo(self):
-        J.memoria.registrar_mensagem("user", "oi")
+        J.estado.memoria.registrar_mensagem("user", "oi")
 
         with mock.patch.object(J.session, "post") as post:
             self.assertIsNone(J.resumir_sessao())
@@ -1014,8 +1014,8 @@ class TestConversaGravada(NebellTest):
 
     def test_limpa_o_pensamento_do_resumo(self):
         for i in range(3):
-            J.memoria.registrar_mensagem("user", f"p{i}")
-            J.memoria.registrar_mensagem("assistant", f"r{i}")
+            J.estado.memoria.registrar_mensagem("user", f"p{i}")
+            J.estado.memoria.registrar_mensagem("assistant", f"r{i}")
 
         resposta = mock.Mock()
         resposta.json.return_value = {
@@ -1110,7 +1110,7 @@ class TestComandosAprendidos(NebellTest):
             "meu som", "toque rock", ferramenta="tocar_musica",
             argumentos='{"busca": "rock classico"}',
         )
-        comando = J.memoria.casar_comando("meu som")
+        comando = J.estado.memoria.casar_comando("meu som")
         self.assertIn("rock classico", comando["argumentos"])
 
     def test_argumentos_invalidos_nao_derrubam(self):
@@ -2406,7 +2406,7 @@ class TestTrabalhadorDaHud(NebellTest):
         # O pywebview passa a janela; não pode levantar TypeError.
         worker(object())
         flush_speech()
-        J.hud = None
+        J.estado.hud = None
 
     def test_falha_no_trabalhador_e_relatada(self):
         falso_hud = mock.Mock()
@@ -2425,7 +2425,7 @@ class TestTrabalhadorDaHud(NebellTest):
             capturado["worker"](None)
 
         flush_speech()
-        J.hud = None
+        J.estado.hud = None
 
 
 class TestWhisperCaiParaCpu(NebellTest):
@@ -2766,13 +2766,13 @@ class TestConfirmacaoNaJanela(NebellTest):
         super().setUp()
         self.hud = mock.Mock()
         self.hud.active = True
-        J.hud = self.hud
+        J.estado.hud = self.hud
         J.estado.interaction_mode = "text"
         while not J.request_queue.empty():
             J.request_queue.get_nowait()
 
     def tearDown(self):
-        J.hud = None
+        J.estado.hud = None
 
     def test_faca_autoriza(self):
         J.request_queue.put(("hud", "faça"))
@@ -3216,13 +3216,13 @@ class TestModoHud(NebellTest):
         super().setUp()
         self.hud = mock.Mock()
         self.hud.active = True
-        J.hud = self.hud
+        J.estado.hud = self.hud
         while not J.request_queue.empty():
             J.request_queue.get_nowait()
         J.shutdown_event.clear()
 
     def tearDown(self):
-        J.hud = None
+        J.estado.hud = None
         J.shutdown_event.set()
 
     def test_texto_da_janela_entra_na_fila(self):
@@ -4026,7 +4026,7 @@ class TestFerramentasDeLembrete(NebellTest):
 
         self.falas = []
         J.estado.agenda = nebell_agenda.Agenda(
-            J.memoria, ao_disparar=self.falas.append, log=lambda *a: None
+            J.estado.memoria, ao_disparar=self.falas.append, log=lambda *a: None
         )
         J.estado.agenda.criar_tabela()
 
@@ -4185,7 +4185,7 @@ class TestFerramentasDeVisaoEJanela(NebellTest):
         alvo.write_text("conteudo qualquer", encoding="utf-8")
 
         J.tool_resumir_documento(str(alvo))
-        self.assertTrue(J.memoria.buscar_arquivos("nota5", limite=5))
+        self.assertTrue(J.estado.memoria.buscar_arquivos("nota5", limite=5))
 
 
 class TestSentinelaLigada(NebellTest):
@@ -4835,19 +4835,19 @@ class TestPerfilEIntervaloDaSentinela(NebellTest):
 class TestPainelDaHud(NebellTest):
     def setUp(self):
         super().setUp()
-        self.antes = J.hud
+        self.antes = J.estado.hud
 
     def tearDown(self):
-        J.hud = self.antes
+        J.estado.hud = self.antes
 
     def hud_falsa(self, ativa=True):
         falsa = mock.Mock()
         falsa.active = ativa
-        J.hud = falsa
+        J.estado.hud = falsa
         return falsa
 
     def test_sem_hud_nao_faz_nada(self):
-        J.hud = None
+        J.estado.hud = None
         J.atualizar_estatisticas(uma_vez=True)       # nao pode estourar
 
     def test_alimenta_o_painel(self):
@@ -4880,7 +4880,7 @@ class TestPainelDaHud(NebellTest):
         with mock.patch.object(J, "medir_latencia", lambda: (20, 95)):
             J.atualizar_estatisticas(uma_vez=True)
 
-        J.hud.set_stats.assert_called_once()
+        J.estado.hud.set_stats.assert_called_once()
 
     def test_todo_perfil_diz_o_intervalo_do_painel(self):
         for nome, dados in J.PERFIS.items():
@@ -4992,7 +4992,7 @@ class TestPedidoDeEncerrar(NebellTest):
         with mock.patch.object(
             J, "ask_nebell", lambda t: atendidos.append(t)
         ), mock.patch.object(J, "wait_for_speech", lambda: None), \
-                mock.patch.object(J, "hud", None):
+                mock.patch.object(J.estado, "hud", None):
             J.dispatcher_loop()
 
         self.assertEqual(atendidos, [])
@@ -5011,7 +5011,7 @@ class TestPedidoDeEncerrar(NebellTest):
             J.shutdown_event.set()
 
         with mock.patch.object(J, "ask_nebell", atender), \
-                mock.patch.object(J, "hud", None):
+                mock.patch.object(J.estado, "hud", None):
             J.dispatcher_loop()
 
         self.assertEqual(atendidos, ["que horas são"])
@@ -5712,7 +5712,7 @@ class TestReceberArquivo(NebellTest):
     def test_fica_registrado_na_memoria(self):
         self.enviar("memoria.py", "x = 1")
 
-        self.assertTrue(J.memoria.buscar_arquivos("memoria.py", limite=5))
+        self.assertTrue(J.estado.memoria.buscar_arquivos("memoria.py", limite=5))
 
     def test_a_memoria_guarda_a_frase_curta(self):
         # O prompt cheio não deve entupir o histórico da conversa.
@@ -5760,7 +5760,7 @@ class TestReceberArquivo(NebellTest):
             J.shutdown_event.set()
 
         with mock.patch.object(J, "receber_arquivo", receber), \
-                mock.patch.object(J, "hud", None):
+                mock.patch.object(J.estado, "hud", None):
             J.dispatcher_loop()
 
         J.shutdown_event.clear()
@@ -5776,7 +5776,7 @@ class TestReceberArquivo(NebellTest):
             raise RuntimeError("quebrou")
 
         with mock.patch.object(J, "receber_arquivo", explodir), \
-                mock.patch.object(J, "hud", None):
+                mock.patch.object(J.estado, "hud", None):
             J.dispatcher_loop()
 
         J.shutdown_event.clear()
@@ -5897,7 +5897,7 @@ class TestFerramentaDeBackup(NebellTest):
         shutil.rmtree(self.pasta, ignore_errors=True)
 
         J.estado.backup = nebell_backup.Backup(
-            TMP / "memoria.db", self.pasta, memoria=J.memoria,
+            TMP / "memoria.db", self.pasta, memoria=J.estado.memoria,
             log=lambda *a: None,
         )
 
@@ -6256,7 +6256,7 @@ class TestSalvarCodigoDaResposta(NebellTest):
         J.salvar_codigo_da_resposta(
             "faça arquivo em java sobre herança", RESPOSTA_DE_HERANCA
         )
-        self.assertTrue(J.memoria.buscar_arquivos("Animal", limite=5))
+        self.assertTrue(J.estado.memoria.buscar_arquivos("Animal", limite=5))
 
     def test_grava_no_lugar_que_o_pedido_citou(self):
         casa = Path(tempfile.mkdtemp(prefix="nebell_casa_"))
@@ -6446,12 +6446,12 @@ class TestRelatorioNoEncerramento(NebellTest):
 
         self.pasta = Path(tempfile.mkdtemp(prefix="nebell_rel_"))
         J.estado.backup = nebell_backup.Backup(
-            TMP / "memoria.db", self.pasta, memoria=J.memoria,
+            TMP / "memoria.db", self.pasta, memoria=J.estado.memoria,
             log=lambda *a: None,
         )
 
-        J.memoria.guardar_fato("gosta de café sem açúcar", "preferencia")
-        J.memoria.registrar_mensagem("user", "oi")
+        J.estado.memoria.guardar_fato("gosta de café sem açúcar", "preferencia")
+        J.estado.memoria.registrar_mensagem("user", "oi")
 
     def tearDown(self):
         if J.estado.backup is not None:
@@ -6465,7 +6465,7 @@ class TestRelatorioNoEncerramento(NebellTest):
 
     def test_o_relatorio_sai_com_conteudo(self):
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
-                mock.patch.object(J.memoria, "fechar", lambda: None):
+                mock.patch.object(J.estado.memoria, "fechar", lambda: None):
             J.fechar_memoria()
 
         self.assertIn("café sem açúcar", self.relatorio)
@@ -6479,18 +6479,18 @@ class TestRelatorioNoEncerramento(NebellTest):
             quando_fechou["existia"] = (self.pasta / "memorias.txt").is_file()
 
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
-                mock.patch.object(J.memoria, "fechar", fechar_falso):
+                mock.patch.object(J.estado.memoria, "fechar", fechar_falso):
             J.fechar_memoria()
 
         self.assertTrue(quando_fechou.get("existia"))
 
     def test_a_copia_final_nao_apaga_o_relatorio(self):
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
-                mock.patch.object(J.memoria, "fechar", lambda: None):
+                mock.patch.object(J.estado.memoria, "fechar", lambda: None):
             J.fechar_memoria()
 
         bom = self.relatorio
-        J.memoria.fechar()          # agora sim, fechado de verdade
+        J.estado.memoria.fechar()          # agora sim, fechado de verdade
         J.copiar_memoria_no_fim()
 
         self.assertEqual(self.relatorio, bom)
@@ -6501,7 +6501,7 @@ class TestRelatorioNoEncerramento(NebellTest):
         J.estado.backup.copiar(forcar=True)
         bom = self.relatorio
 
-        J.memoria.fechar()
+        J.estado.memoria.fechar()
         self.assertFalse(J.estado.backup.escrever_relatorio())
         self.assertEqual(self.relatorio, bom)
 
@@ -6509,7 +6509,7 @@ class TestRelatorioNoEncerramento(NebellTest):
         J.estado.backup = None
 
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
-                mock.patch.object(J.memoria, "fechar", lambda: None):
+                mock.patch.object(J.estado.memoria, "fechar", lambda: None):
             J.fechar_memoria()
 
     def test_relatorio_que_falha_nao_impede_o_fechamento(self):
@@ -6521,7 +6521,7 @@ class TestRelatorioNoEncerramento(NebellTest):
                     side_effect=RuntimeError("quebrou")
                 ), \
                 mock.patch.object(
-                    J.memoria, "fechar", lambda: fechou.append(True)
+                    J.estado.memoria, "fechar", lambda: fechou.append(True)
                 ):
             J.fechar_memoria()
 
@@ -6600,15 +6600,15 @@ class HudEspia:
 class JanelaTest(NebellTest):
     def setUp(self):
         super().setUp()
-        self.antes = J.hud
+        self.antes = J.estado.hud
         self.espia = HudEspia()
-        J.hud = self.espia
+        J.estado.hud = self.espia
         J.texto_na_janela[0] = False
         J._stream_em[0] = 0.0
         J._fazendo_agora[0] = ""
 
     def tearDown(self):
-        J.hud = self.antes
+        J.estado.hud = self.antes
         J.texto_na_janela[0] = False
         J._fazendo_agora[0] = ""
 
@@ -6649,7 +6649,7 @@ class TestTextoEmTempoReal(JanelaTest):
         self.assertEqual(self.espia.de("stream"), [])
 
     def test_sem_janela_nao_estoura(self):
-        J.hud = None
+        J.estado.hud = None
         J.ui_stream("algo", forcar=True)
         J.ui_fechar_stream()
         J.ui_trabalhando("x")
@@ -6768,7 +6768,7 @@ class TestAvisoDeTrabalho(JanelaTest):
         self.assertEqual(self.avisos(), [])
 
     def test_sem_janela_o_vigia_sai_na_hora(self):
-        J.hud = None
+        J.estado.hud = None
         J.busy_event.set()
 
         try:
@@ -7115,11 +7115,11 @@ class TestAvisaAJanelaOQueEstaFazendo(NebellTest):
     def setUp(self):
         super().setUp()
         self.janela = mock.Mock()
-        self.antiga = J.hud
-        J.hud = self.janela
+        self.antiga = J.estado.hud
+        J.estado.hud = self.janela
 
     def tearDown(self):
-        J.hud = self.antiga
+        J.estado.hud = self.antiga
         super().tearDown()
 
     def test_a_ferramenta_chega_na_janela(self):
@@ -7131,7 +7131,7 @@ class TestAvisaAJanelaOQueEstaFazendo(NebellTest):
         self.assertEqual(J._fazendo_agora[0], "pesquisando na internet")
 
     def test_sem_janela_nao_estoura(self):
-        J.hud = None
+        J.estado.hud = None
         J.descrever_trabalho("backup")
         self.assertEqual(J._fazendo_agora[0], "cuidando do backup")
 
