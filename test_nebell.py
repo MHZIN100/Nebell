@@ -2468,7 +2468,7 @@ class TestWhisperCaiParaCpu(NebellTest):
     def test_erro_no_aquecimento_cai_para_cpu(self):
         modulo, ct, tentativas = self.preparar()
 
-        J.whisper_model = None
+        J.estado.whisper_model = None
 
         try:
             with mock.patch.dict(sys.modules,
@@ -2479,17 +2479,17 @@ class TestWhisperCaiParaCpu(NebellTest):
 
                 self.assertEqual(tentativas[0][0], "cuda")
                 self.assertEqual(tentativas[1], ("cpu", "int8"))
-                self.assertIsNotNone(J.whisper_model)
+                self.assertIsNotNone(J.estado.whisper_model)
                 self.assertEqual(J.WHISPER_BEAM_SIZE, J.WHISPER_BEAM_CPU)
         finally:
-            J.whisper_model = None
+            J.estado.whisper_model = None
 
     def test_gpu_boa_fica_na_gpu(self):
         modulo, ct, tentativas = self.preparar(
             falhar_em_cuda_no_aquecimento=False
         )
 
-        J.whisper_model = None
+        J.estado.whisper_model = None
 
         try:
             with mock.patch.dict(sys.modules,
@@ -2500,9 +2500,9 @@ class TestWhisperCaiParaCpu(NebellTest):
 
                 self.assertEqual(len(tentativas), 1)
                 self.assertEqual(J.WHISPER_BEAM_SIZE, J.WHISPER_BEAM_GPU)
-                self.assertIsNotNone(J.whisper_model)
+                self.assertIsNotNone(J.estado.whisper_model)
         finally:
-            J.whisper_model = None
+            J.estado.whisper_model = None
 
     def test_cpu_que_falha_nao_entra_em_laco(self):
         import types
@@ -2517,13 +2517,13 @@ class TestWhisperCaiParaCpu(NebellTest):
         ct = types.ModuleType("ctranslate2")
         ct.get_cuda_device_count = lambda: 0
 
-        J.whisper_model = None
+        J.estado.whisper_model = None
 
         with mock.patch.dict(sys.modules,
                              {"faster_whisper": modulo, "ctranslate2": ct}), \
              mock.patch.object(J, "WHISPER_DEVICE", "auto"):
             J.load_whisper()          # não deve levantar
-            self.assertIsNone(J.whisper_model)
+            self.assertIsNone(J.estado.whisper_model)
 
 
 class TestSelecaoDeFerramentas(NebellTest):
@@ -2908,23 +2908,23 @@ class TestCaminhoDoReconhecimento(NebellTest):
         falso = self.falso_gerenciador()
         J.whisper_ready.set()
 
-        with mock.patch.object(J, "mic_manager", falso), \
-             mock.patch.object(J, "whisper_model", None):
+        with mock.patch.object(J.estado, "mic_manager", falso), \
+             mock.patch.object(J.estado, "whisper_model", None):
             self.assertEqual(J.transcribe(b"audio"), "texto reconhecido")
 
     def test_listen_completo_sem_whisper(self):
         falso = self.falso_gerenciador("abra o navegador")
         J.whisper_ready.set()
 
-        with mock.patch.object(J, "mic_manager", falso), \
-             mock.patch.object(J, "whisper_model", None):
+        with mock.patch.object(J.estado, "mic_manager", falso), \
+             mock.patch.object(J.estado, "whisper_model", None):
             self.assertEqual(J.listen(timeout=1), "abra o navegador")
 
     def test_sem_microfone_erro_claro(self):
         J.whisper_ready.set()
 
-        with mock.patch.object(J, "mic_manager", None), \
-             mock.patch.object(J, "whisper_model", None):
+        with mock.patch.object(J.estado, "mic_manager", None), \
+             mock.patch.object(J.estado, "whisper_model", None):
             with self.assertRaises(RuntimeError) as capturado:
                 J.transcribe(b"audio")
 
@@ -2933,8 +2933,8 @@ class TestCaminhoDoReconhecimento(NebellTest):
     def test_whisper_com_falha_cai_para_o_google(self):
         falso = self.falso_gerenciador("veio do google")
 
-        with mock.patch.object(J, "mic_manager", falso), \
-             mock.patch.object(J, "whisper_model", object()), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
+             mock.patch.object(J.estado, "whisper_model", object()), \
              mock.patch.object(J, "transcribe_whisper",
                                side_effect=Exception("modelo quebrado")):
             self.assertEqual(J.transcribe(b"audio"), "veio do google")
@@ -2942,8 +2942,8 @@ class TestCaminhoDoReconhecimento(NebellTest):
     def test_whisper_tem_prioridade(self):
         falso = self.falso_gerenciador("google")
 
-        with mock.patch.object(J, "mic_manager", falso), \
-             mock.patch.object(J, "whisper_model", object()), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
+             mock.patch.object(J.estado, "whisper_model", object()), \
              mock.patch.object(J, "transcribe_whisper", return_value="whisper"):
             self.assertEqual(J.transcribe(b"audio"), "whisper")
 
@@ -3039,7 +3039,7 @@ class TestEscutaDireta(NebellTest):
 
 class TestDiagnosticoDoMicrofone(NebellTest):
     def test_sem_microfone_avisa(self):
-        with mock.patch.object(J, "mic_manager", None):
+        with mock.patch.object(J.estado, "mic_manager", None):
             self.assertIn("indisponível", J.diagnosticar_microfone())
 
     def falso_gerenciador(self, nivel=3000, texto="teste de voz"):
@@ -3064,9 +3064,9 @@ class TestDiagnosticoDoMicrofone(NebellTest):
     def test_relatorio_completo(self):
         falso = self.falso_gerenciador()
 
-        with mock.patch.object(J, "mic_manager", falso), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
              mock.patch.object(J, "transcribe", return_value="teste de voz"), \
-             mock.patch.object(J, "whisper_model", object()):
+             mock.patch.object(J.estado, "whisper_model", object()):
             relatorio = J.diagnosticar_microfone(4)
 
         for parte in ("Microfone:", "Limiar", "Volume medido",
@@ -3077,7 +3077,7 @@ class TestDiagnosticoDoMicrofone(NebellTest):
     def test_avisa_volume_baixo(self):
         falso = self.falso_gerenciador(nivel=50)
 
-        with mock.patch.object(J, "mic_manager", falso), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
              mock.patch.object(J, "transcribe", return_value=""):
             relatorio = J.diagnosticar_microfone(4)
 
@@ -3088,7 +3088,7 @@ class TestDiagnosticoDoMicrofone(NebellTest):
         falso = self.falso_gerenciador(nivel=250)
         falso.recognizer.energy_threshold = 900.0
 
-        with mock.patch.object(J, "mic_manager", falso), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
              mock.patch.object(J, "transcribe", return_value="algo"):
             relatorio = J.diagnosticar_microfone(4)
 
@@ -3099,8 +3099,8 @@ class TestDiagnosticoDoMicrofone(NebellTest):
     def test_avisa_que_esta_no_google(self):
         falso = self.falso_gerenciador()
 
-        with mock.patch.object(J, "mic_manager", falso), \
-             mock.patch.object(J, "whisper_model", None), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
+             mock.patch.object(J.estado, "whisper_model", None), \
              mock.patch.object(J, "transcribe", return_value="algo"):
             relatorio = J.diagnosticar_microfone(4)
 
@@ -3110,9 +3110,9 @@ class TestDiagnosticoDoMicrofone(NebellTest):
     def test_nada_entendido_aponta_o_motor(self):
         falso = self.falso_gerenciador()
 
-        with mock.patch.object(J, "mic_manager", falso), \
+        with mock.patch.object(J.estado, "mic_manager", falso), \
              mock.patch.object(J, "transcribe", return_value=""), \
-             mock.patch.object(J, "whisper_model", object()):
+             mock.patch.object(J.estado, "whisper_model", object()):
             relatorio = J.diagnosticar_microfone(4)
 
         self.assertIn("motor de reconhecimento", relatorio)
@@ -3122,7 +3122,7 @@ class TestDiagnosticoDoMicrofone(NebellTest):
         falso = self.falso_gerenciador()
         falso.escutar.side_effect = Exception("fluxo fechado")
 
-        with mock.patch.object(J, "mic_manager", falso):
+        with mock.patch.object(J.estado, "mic_manager", falso):
             self.assertIn("Não gravei nada", J.diagnosticar_microfone(4))
         flush_speech()
 
@@ -3341,7 +3341,7 @@ class TestModoHud(NebellTest):
             self.assertIn(campo, dados)
 
     def test_estatisticas_avisam_que_o_whisper_falta(self):
-        with mock.patch.object(J, "whisper_model", None):
+        with mock.patch.object(J.estado, "whisper_model", None):
             self.assertIn("faster-whisper", J.coletar_estatisticas()["stt"])
 
     def test_nivel_de_audio_vai_para_a_janela(self):
@@ -3408,7 +3408,7 @@ class TestModoHud(NebellTest):
         falso = mock.Mock()
         falso.use.return_value = (True, "Microfone agora é Fone.")
 
-        with mock.patch.object(J, "mic_manager", falso):
+        with mock.patch.object(J.estado, "mic_manager", falso):
             J.hud_set_mic("fone")
 
         falso.use.assert_called_once_with("fone")
@@ -4025,16 +4025,16 @@ class TestFerramentasDeLembrete(NebellTest):
         import nebell_agenda
 
         self.falas = []
-        J.agenda = nebell_agenda.Agenda(
+        J.estado.agenda = nebell_agenda.Agenda(
             J.memoria, ao_disparar=self.falas.append, log=lambda *a: None
         )
-        J.agenda.criar_tabela()
+        J.estado.agenda.criar_tabela()
 
     def tearDown(self):
-        if J.agenda is not None:
-            J.agenda.parar()
+        if J.estado.agenda is not None:
+            J.estado.agenda.parar()
 
-        J.agenda = None
+        J.estado.agenda = None
 
     def test_criar(self):
         resposta = J.tool_lembrete("criar", "pagar a luz", "amanha as 8")
@@ -4065,7 +4065,7 @@ class TestFerramentasDeLembrete(NebellTest):
         self.assertIn("qual", J.tool_lembrete("cancelar", ""))
 
     def test_sem_agenda_explica(self):
-        J.agenda = None
+        J.estado.agenda = None
         self.assertIn("agenda", J.tool_lembrete("listar").lower())
 
     def test_prompt_do_sistema_traz_os_lembretes(self):
@@ -4190,10 +4190,10 @@ class TestFerramentasDeVisaoEJanela(NebellTest):
 
 class TestSentinelaLigada(NebellTest):
     def tearDown(self):
-        if J.sentinela is not None:
-            J.sentinela.parar()
+        if J.estado.sentinela is not None:
+            J.estado.sentinela.parar()
 
-        J.sentinela = None
+        J.estado.sentinela = None
 
     def test_estado_da_maquina_e_falavel(self):
         texto = J.tool_estado_maquina()
@@ -4210,10 +4210,10 @@ class TestSentinelaLigada(NebellTest):
 
     def test_iniciar_e_parar(self):
         self.assertTrue(J.iniciar_sentinela())
-        self.assertTrue(J.sentinela.ligada)
+        self.assertTrue(J.estado.sentinela.ligada)
 
         J.fechar_extras()
-        self.assertFalse(J.sentinela.ligada)
+        self.assertFalse(J.estado.sentinela.ligada)
 
     def test_perfil_estudo_desliga_a_vigilancia(self):
         J.iniciar_sentinela()
@@ -4222,7 +4222,7 @@ class TestSentinelaLigada(NebellTest):
         with mock.patch.object(J.threading, "Thread"):
             J.aplicar_perfil("estudo")
 
-        self.assertFalse(J.sentinela.ligada)
+        self.assertFalse(J.estado.sentinela.ligada)
         J.estado.perfil_atual = "equilibrado"
 
 
@@ -4513,23 +4513,23 @@ class TestPararOllama(LiberarTest):
 
 class TestLiberarWhisper(LiberarTest):
     def tearDown(self):
-        J.whisper_model = None
+        J.estado.whisper_model = None
         J.whisper_soltado[0] = False
 
     def test_sem_modelo_nao_faz_nada(self):
-        J.whisper_model = None
+        J.estado.whisper_model = None
         self.assertFalse(J.liberar_whisper())
 
     def test_solta_e_marca_para_recarregar(self):
-        J.whisper_model = object()
+        J.estado.whisper_model = object()
 
         self.assertTrue(J.liberar_whisper())
-        self.assertIsNone(J.whisper_model)
+        self.assertIsNone(J.estado.whisper_model)
         self.assertTrue(J.whisper_soltado[0])
         self.assertFalse(J.whisper_ready.is_set())
 
     def test_a_escuta_volta_na_proxima_fala(self):
-        J.whisper_model = object()
+        J.estado.whisper_model = object()
         J.liberar_whisper()
 
         criadas = []
@@ -4805,10 +4805,10 @@ class TestPerfilEIntervaloDaSentinela(NebellTest):
     def tearDown(self):
         J.estado.perfil_atual = self.perfil_antes
 
-        if J.sentinela is not None:
-            J.sentinela.parar()
+        if J.estado.sentinela is not None:
+            J.estado.sentinela.parar()
 
-        J.sentinela = None
+        J.estado.sentinela = None
 
     def test_todo_perfil_diz_o_intervalo(self):
         for nome, dados in J.PERFIS.items():
@@ -4828,7 +4828,7 @@ class TestPerfilEIntervaloDaSentinela(NebellTest):
             J.aplicar_perfil("jogo")
 
         self.assertEqual(
-            J.sentinela.intervalo, J.PERFIS["jogo"]["sentinela_intervalo"]
+            J.estado.sentinela.intervalo, J.PERFIS["jogo"]["sentinela_intervalo"]
         )
 
 
@@ -5896,16 +5896,16 @@ class TestFerramentaDeBackup(NebellTest):
         self.pasta = TMP / "backup_tool"
         shutil.rmtree(self.pasta, ignore_errors=True)
 
-        J.backup = nebell_backup.Backup(
+        J.estado.backup = nebell_backup.Backup(
             TMP / "memoria.db", self.pasta, memoria=J.memoria,
             log=lambda *a: None,
         )
 
     def tearDown(self):
-        if J.backup is not None:
-            J.backup.parar()
+        if J.estado.backup is not None:
+            J.estado.backup.parar()
 
-        J.backup = None
+        J.estado.backup = None
 
     def test_status_sem_copia(self):
         self.assertIn("Ainda não há backup", J.tool_backup("status"))
@@ -5927,13 +5927,13 @@ class TestFerramentaDeBackup(NebellTest):
         self.assertIn("programa aberto", resposta)
 
     def test_sem_backup_ligado(self):
-        J.backup = None
+        J.estado.backup = None
 
         with mock.patch.object(J, "nebell_backup", object()):
             self.assertIn("desligado", J.tool_backup())
 
     def test_sem_o_modulo(self):
-        J.backup = None
+        J.estado.backup = None
 
         with mock.patch.object(J, "nebell_backup", None):
             self.assertIn("backup", J.tool_backup().lower())
@@ -5950,7 +5950,7 @@ class TestFerramentaDeBackup(NebellTest):
         pedidos = []
 
         with mock.patch.object(
-            J.backup, "copiar",
+            J.estado.backup, "copiar",
             lambda forcar=False, motivo="", com_relatorio=True: pedidos.append(
                 (forcar, motivo, com_relatorio)
             ) or (True, "ok"),
@@ -5962,14 +5962,14 @@ class TestFerramentaDeBackup(NebellTest):
         self.assertEqual(pedidos, [(True, "encerramento", False)])
 
     def test_sem_backup_o_fim_nao_estoura(self):
-        J.backup = None
+        J.estado.backup = None
         J.copiar_memoria_no_fim()
 
     def test_fechar_extras_para_o_backup(self):
-        J.backup.iniciar()
+        J.estado.backup.iniciar()
         J.fechar_extras()
 
-        self.assertFalse(J.backup.ligado)
+        self.assertFalse(J.estado.backup.ligado)
 
 
 # ============================================================
@@ -6445,7 +6445,7 @@ class TestRelatorioNoEncerramento(NebellTest):
         import nebell_backup
 
         self.pasta = Path(tempfile.mkdtemp(prefix="nebell_rel_"))
-        J.backup = nebell_backup.Backup(
+        J.estado.backup = nebell_backup.Backup(
             TMP / "memoria.db", self.pasta, memoria=J.memoria,
             log=lambda *a: None,
         )
@@ -6454,10 +6454,10 @@ class TestRelatorioNoEncerramento(NebellTest):
         J.memoria.registrar_mensagem("user", "oi")
 
     def tearDown(self):
-        if J.backup is not None:
-            J.backup.parar()
+        if J.estado.backup is not None:
+            J.estado.backup.parar()
 
-        J.backup = None
+        J.estado.backup = None
 
     @property
     def relatorio(self):
@@ -6498,15 +6498,15 @@ class TestRelatorioNoEncerramento(NebellTest):
     def test_relatorio_zerado_nao_cobre_o_bom(self):
         # Rede de segurança: mesmo que a ordem se perca algum dia, um
         # relatório de zeros não substitui um que tinha conteúdo.
-        J.backup.copiar(forcar=True)
+        J.estado.backup.copiar(forcar=True)
         bom = self.relatorio
 
         J.memoria.fechar()
-        self.assertFalse(J.backup.escrever_relatorio())
+        self.assertFalse(J.estado.backup.escrever_relatorio())
         self.assertEqual(self.relatorio, bom)
 
     def test_sem_backup_o_fechar_nao_estoura(self):
-        J.backup = None
+        J.estado.backup = None
 
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
                 mock.patch.object(J.memoria, "fechar", lambda: None):
@@ -6517,7 +6517,7 @@ class TestRelatorioNoEncerramento(NebellTest):
 
         with mock.patch.object(J, "resumir_sessao", lambda: None), \
                 mock.patch.object(
-                    J.backup, "escrever_relatorio",
+                    J.estado.backup, "escrever_relatorio",
                     side_effect=RuntimeError("quebrou")
                 ), \
                 mock.patch.object(
@@ -6555,7 +6555,7 @@ class TestBackupAbreUmaVezSo(NebellTest):
                 mock.patch.object(J, "BACKUP_DIR", pasta):
             J.abrir_backup()
 
-        J.backup = None
+        J.estado.backup = None
         self.assertEqual(copias, ["abertura"])
 
     def test_a_fonte_chama_abrir_backup_uma_vez(self):
@@ -7048,7 +7048,7 @@ class TestEscutaNaoDesiste(NebellTest):
         gerente.ready = False
         gerente.recover.return_value = False
 
-        with mock.patch.object(J, "mic_manager", gerente), \
+        with mock.patch.object(J.estado, "mic_manager", gerente), \
                 mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0):
             self.rodar_um_pouco()
 
@@ -7062,7 +7062,7 @@ class TestEscutaNaoDesiste(NebellTest):
         gerente.ready = False
         gerente.recover.return_value = True
 
-        with mock.patch.object(J, "mic_manager", gerente), \
+        with mock.patch.object(J.estado, "mic_manager", gerente), \
                 mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0), \
                 mock.patch.object(J, "on_microphone_change") as avisar:
             self.rodar_um_pouco()
@@ -7075,7 +7075,7 @@ class TestEscutaNaoDesiste(NebellTest):
         gerente.recover.return_value = False
 
         # Com a espera normal de 10 s, uma passada curta tenta uma vez.
-        with mock.patch.object(J, "mic_manager", gerente):
+        with mock.patch.object(J.estado, "mic_manager", gerente):
             self.rodar_um_pouco(segundos=0.8)
 
         self.assertLessEqual(gerente.recover.call_count, 1)
@@ -7085,7 +7085,7 @@ class TestEscutaNaoDesiste(NebellTest):
         gerente.ready = False
         gerente.recover.side_effect = RuntimeError("driver caiu")
 
-        with mock.patch.object(J, "mic_manager", gerente), \
+        with mock.patch.object(J.estado, "mic_manager", gerente), \
                 mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0):
             thread = self.rodar_um_pouco()
 
@@ -7168,12 +7168,12 @@ class TestOciosidade(NebellTest):
         super().setUp()
         self._orig = {
             "OCIOSIDADE_MIN": J.OCIOSIDADE_MIN,
-            "mic_manager": J.mic_manager,
+            "mic_manager": J.estado.mic_manager,
             "ultima": J.ultima_atividade[0],
             "soltos": J._soltos_por_ociosidade[0],
         }
         J.OCIOSIDADE_MIN = 10
-        J.mic_manager = None
+        J.estado.mic_manager = None
         J.busy_event.clear()
         J._soltos_por_ociosidade[0] = False
         # Relogio bem no passado: tempo de sobra ja decorrido.
@@ -7181,7 +7181,7 @@ class TestOciosidade(NebellTest):
 
     def tearDown(self):
         J.OCIOSIDADE_MIN = self._orig["OCIOSIDADE_MIN"]
-        J.mic_manager = self._orig["mic_manager"]
+        J.estado.mic_manager = self._orig["mic_manager"]
         J.ultima_atividade[0] = self._orig["ultima"]
         J._soltos_por_ociosidade[0] = self._orig["soltos"]
         J.busy_event.clear()
@@ -7200,7 +7200,7 @@ class TestOciosidade(NebellTest):
     def test_nao_solta_se_capturando(self):
         mic = mock.Mock()
         mic.capturando.is_set.return_value = True
-        J.mic_manager = mic
+        J.estado.mic_manager = mic
         self.assertFalse(J._deve_soltar_por_ociosidade(self._agora()))
 
     def test_desligado_com_zero(self):

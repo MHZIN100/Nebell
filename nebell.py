@@ -808,7 +808,6 @@ Não mostre raciocínio interno nem tags de pensamento.
 speech_queue = queue.Queue()
 audio_queue = queue.Queue(maxsize=3)
 
-mic_manager = None          # nebell_audio.MicManager
 hud = None                  # nebell_hud.HudBridge
 request_queue = queue.Queue()
 shutdown_event = threading.Event()
@@ -819,10 +818,6 @@ ollama_estava_de_pe = [False]
 maquina_liberada = threading.Event()
 encerramento_feito = threading.Event()
 resumo_feito = threading.Event()
-agenda = None              # nebell_agenda.Agenda
-sentinela = None           # nebell_sentinela.Sentinela
-backup = None              # nebell_backup.Backup
-backup = None              # nebell_backup.Backup
 class Estado:
     """Estado de execucao da NEBELL reunido num objeto, em vez de globais
     soltas. Refatoracao em fatias (strangler): cada grupo coeso migra para
@@ -869,6 +864,13 @@ class Estado:
         self.perfil_atual = PERFIL_PADRAO
         self.dev_mode = DEV_MODE
 
+        # Modelo de escuta e servicos de fundo (abertos no arranque).
+        self.whisper_model = None
+        self.mic_manager = None          # nebell_audio.MicManager
+        self.agenda = None              # nebell_agenda.Agenda
+        self.sentinela = None           # nebell_sentinela.Sentinela
+        self.backup = None              # nebell_backup.Backup
+
         # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
 
@@ -906,11 +908,11 @@ _soltos_por_ociosidade = [False]
 
 
 def microphone_available():
-    return bool(mic_manager is not None and mic_manager.ready)
+    return bool(estado.mic_manager is not None and estado.mic_manager.ready)
 
 
 def get_recognizer():
-    return mic_manager.recognizer if mic_manager is not None else None
+    return estado.mic_manager.recognizer if estado.mic_manager is not None else None
 
 # Conexao reaproveitada: evita abrir um socket novo a cada pergunta.
 session = requests.Session()
@@ -1990,7 +1992,7 @@ def voice_barge_in_watcher():
 
             # O gerenciador tem o seu proprio lock; se uma escuta ja
             # esta em andamento, espera a proxima volta.
-            if mic_manager.capturando.is_set():
+            if estado.mic_manager.capturando.is_set():
                 time.sleep(0.1)
                 continue
 
@@ -2676,13 +2678,12 @@ def liberar_whisper():
     a liberacao e pedida com o NEBELL aberto (antes de jogar, por
     exemplo) isso devolve a VRAM na hora.
     """
-    global whisper_model
 
-    if whisper_model is None:
+    if estado.whisper_model is None:
         return False
 
     try:
-        whisper_model = None
+        estado.whisper_model = None
         whisper_soltado[0] = True
         whisper_ready.clear()
         gc.collect()
@@ -2707,7 +2708,7 @@ def _deve_soltar_por_ociosidade(agora):
         return False
     if busy_event.is_set():
         return False
-    if mic_manager is not None and mic_manager.capturando.is_set():
+    if estado.mic_manager is not None and estado.mic_manager.capturando.is_set():
         return False
     if _soltos_por_ociosidade[0]:
         return False
@@ -2817,7 +2818,6 @@ def on_microphone_change(manager):
 
 def setup_microphone():
     """Monta o gerenciador de microfones e comeca a vigiar as portas."""
-    global mic_manager
 
     if nebell_audio is None:
         print("Microfone indisponível: nebell_audio.py não encontrado.")
@@ -2825,35 +2825,35 @@ def setup_microphone():
 
     print("Procurando microfones...")
 
-    mic_manager = nebell_audio.MicManager(
+    estado.mic_manager = nebell_audio.MicManager(
         base_dir=BASE_DIR, on_change=on_microphone_change
     )
     # As barras da HUD acompanham tambem a voz de quem fala no microfone.
-    mic_manager.on_nivel = feed_mic_level
-    aberto = mic_manager.start(watch=WATCH_MIC_DEVICES)
+    estado.mic_manager.on_nivel = feed_mic_level
+    aberto = estado.mic_manager.start(watch=WATCH_MIC_DEVICES)
 
     if aberto:
-        print(mic_manager.describe_devices())
+        print(estado.mic_manager.describe_devices())
     else:
         print(
             "Nenhum microfone disponível agora. "
             "O modo de texto continua funcionando."
         )
 
-    on_microphone_change(mic_manager)
+    on_microphone_change(estado.mic_manager)
     return aberto
 
 
 def close_microphone():
-    if mic_manager is not None:
-        mic_manager.stop()
+    if estado.mic_manager is not None:
+        estado.mic_manager.stop()
 
 
 def tool_listar_microfones():
-    if mic_manager is None:
+    if estado.mic_manager is None:
         return "O gerenciador de microfones não está disponível."
 
-    return mic_manager.describe_devices() + "\n" + mic_manager.status()
+    return estado.mic_manager.describe_devices() + "\n" + estado.mic_manager.status()
 
 
 def diagnosticar_microfone(segundos=5):
@@ -2866,19 +2866,19 @@ def diagnosticar_microfone(segundos=5):
     """
     linhas = []
 
-    if mic_manager is None or not mic_manager.ready:
+    if estado.mic_manager is None or not estado.mic_manager.ready:
         return (
             "Microfone indisponível: "
-            + (mic_manager.last_error if mic_manager else "sem gerenciador")
+            + (estado.mic_manager.last_error if estado.mic_manager else "sem gerenciador")
         )
 
-    reconhecedor = mic_manager.recognizer
-    linhas.append(f"Microfone: {mic_manager.device.describe()}")
+    reconhecedor = estado.mic_manager.recognizer
+    linhas.append(f"Microfone: {estado.mic_manager.device.describe()}")
     linhas.append(
         f"Motor: "
         + (
             f"faster-whisper local ({WHISPER_MODEL})"
-            if whisper_model is not None
+            if estado.whisper_model is not None
             else "Google online (instale o faster-whisper!)"
         )
     )
@@ -2895,7 +2895,7 @@ def diagnosticar_microfone(segundos=5):
     wait_for_speech()
 
     try:
-        audio = mic_manager.escutar(
+        audio = estado.mic_manager.escutar(
             timeout=segundos, phrase_time_limit=segundos + 3
         )
     except Exception as exc:
@@ -2909,7 +2909,7 @@ def diagnosticar_microfone(segundos=5):
         )
         return "\n".join(linhas)
 
-    nivel = mic_manager.ultimo_nivel
+    nivel = estado.mic_manager.ultimo_nivel
     bruto = audio.get_raw_data()
     duracao = len(bruto) / (audio.sample_rate * audio.sample_width)
 
@@ -2925,7 +2925,7 @@ def diagnosticar_microfone(segundos=5):
         linhas.append(
             "AVISO: sua voz ficou abaixo do limiar. Vou recalibrar."
         )
-        mic_manager.calibrate()
+        estado.mic_manager.calibrate()
         linhas.append(f"Novo limiar: {int(reconhecedor.energy_threshold)}")
 
     inicio = time.time()
@@ -2960,10 +2960,10 @@ def tool_testar_microfone(segundos=None):
 
 def tool_usar_microfone(qual):
     """Troca o microfone por indice, por nome ou por 'auto'."""
-    if mic_manager is None:
+    if estado.mic_manager is None:
         return "O gerenciador de microfones não está disponível."
 
-    deu_certo, mensagem = mic_manager.use(qual)
+    deu_certo, mensagem = estado.mic_manager.use(qual)
     return mensagem
 
 
@@ -2971,7 +2971,6 @@ def tool_usar_microfone(qual):
 # RECONHECIMENTO DE VOZ
 # ============================================================
 
-whisper_model = None
 whisper_soltado = [False]       # soltado de proposito; recarrega ao precisar
 whisper_ready = threading.Event()
 _warned_google = [False]
@@ -3070,7 +3069,7 @@ def registrar_dlls_cuda():
 
 def load_whisper():
     """Carrega o faster-whisper em segundo plano."""
-    global whisper_model, WHISPER_BEAM_SIZE
+    global WHISPER_BEAM_SIZE
 
     try:
         if STT_ENGINE != "whisper":
@@ -3157,7 +3156,7 @@ def load_whisper():
             WHISPER_BEAM_GPU if device == "cuda" else WHISPER_BEAM_CPU
         )
 
-        whisper_model = model
+        estado.whisper_model = model
         print(
             f"\n[Reconhecimento de voz local pronto: "
             f"{WHISPER_MODEL} em {device}, "
@@ -3194,7 +3193,7 @@ def transcribe_whisper(audio):
     # das razoes de ele entender mal. Com 5, acerta bem mais; a lista de
     # temperaturas faz o Whisper tentar de novo quando a primeira
     # passagem sai com pouca confianca.
-    segments, _ = whisper_model.transcribe(
+    segments, _ = estado.whisper_model.transcribe(
         samples,
         language="pt",
         task="transcribe",
@@ -3234,7 +3233,7 @@ def transcribe_whisper(audio):
 
 def transcribe(audio):
     """Whisper local quando disponivel; senao, Google."""
-    if whisper_model is None and STT_ENGINE == "whisper":
+    if estado.whisper_model is None and STT_ENGINE == "whisper":
         # A escuta pode ter sido soltada de proposito para liberar a
         # placa (ferramenta liberar_maquina). Nesse caso ela volta aqui,
         # na primeira fala depois disso, em vez de a frase cair no
@@ -3248,13 +3247,13 @@ def transcribe(audio):
         # mesmo com o Whisper quase pronto.
         whisper_ready.wait(timeout=WHISPER_WAIT_SECONDS)
 
-    if whisper_model is not None:
+    if estado.whisper_model is not None:
         try:
             return transcribe_whisper(audio)
         except Exception as exc:
             print(f"[Erro no faster-whisper, usando o Google: {exc}]")
 
-    if STT_ENGINE == "whisper" and whisper_model is None and not _warned_google[0]:
+    if STT_ENGINE == "whisper" and estado.whisper_model is None and not _warned_google[0]:
         _warned_google[0] = True
         print(
             "\n[Atenção] O reconhecimento está indo pelo Google, que é "
@@ -3397,7 +3396,7 @@ def capture_audio(timeout, phrase_time_limit):
         try:
             # O proprio gerenciador cuida do lock, do fluxo aberto e de
             # limpar o que sobrou no buffer desde a ultima escuta.
-            return mic_manager.escutar(
+            return estado.mic_manager.escutar(
                 timeout=timeout, phrase_time_limit=phrase_time_limit
             )
 
@@ -3405,7 +3404,7 @@ def capture_audio(timeout, phrase_time_limit):
             raise
 
         except Exception as exc:
-            if tentativa == 2 or not mic_manager.recover():
+            if tentativa == 2 or not estado.mic_manager.recover():
                 raise exc
 
     return None
@@ -3706,8 +3705,8 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
             "escrever_arquivo; para apagar use apagar_arquivo.\n"
         )
 
-    if agenda is not None:
-        pendentes = agenda.descrever(limite=4)
+    if estado.agenda is not None:
+        pendentes = estado.agenda.descrever(limite=4)
 
         if pendentes:
             extra += f"\nLEMBRETES MARCADOS: {pendentes}\n"
@@ -7053,7 +7052,7 @@ def aplicar_perfil(nome):
     (deu_certo, mensagem).
     """
     global NUM_CTX, KEEP_ALIVE, MAX_REPLY_TOKENS
-    global WHISPER_MODEL, WHISPER_DEVICE, whisper_model
+    global WHISPER_MODEL, WHISPER_DEVICE
 
     pedido = normalize(nome)
 
@@ -7097,16 +7096,16 @@ def aplicar_perfil(nome):
     if dados["sentinela"]:
         iniciar_sentinela()
 
-        if sentinela is not None:
-            sentinela.intervalo = dados["sentinela_intervalo"]
+        if estado.sentinela is not None:
+            estado.sentinela.intervalo = dados["sentinela_intervalo"]
 
-    elif sentinela is not None and sentinela.ligada:
-        sentinela.parar()
+    elif estado.sentinela is not None and estado.sentinela.ligada:
+        estado.sentinela.parar()
 
     partes = [f"Perfil {escolhido}: {dados['descricao']}."]
 
     if escuta_mudou:
-        whisper_model = None
+        estado.whisper_model = None
         threading.Thread(target=load_whisper, daemon=True).start()
         partes.append(
             f"Estou recarregando a escuta como {WHISPER_MODEL} em "
@@ -7124,7 +7123,7 @@ def aplicar_perfil(nome):
 
 def tool_lembrete(acao="listar", assunto="", quando=""):
     """Cria, lista e cancela lembretes."""
-    if agenda is None:
+    if estado.agenda is None:
         return (
             "A agenda não está ligada. Confira se nebell_agenda.py está "
             "na pasta do NEBELL."
@@ -7140,7 +7139,7 @@ def tool_lembrete(acao="listar", assunto="", quando=""):
         if not quando:
             return "Diga quando eu devo te avisar."
 
-        identificador, mensagem = agenda.criar(assunto, quando)
+        identificador, mensagem = estado.agenda.criar(assunto, quando)
         return mensagem
 
     if operacao in ("cancelar", "cancela", "apagar", "remover", "tirar",
@@ -7148,10 +7147,10 @@ def tool_lembrete(acao="listar", assunto="", quando=""):
         if not assunto:
             return "Diga qual lembrete eu devo cancelar."
 
-        quantos, mensagem = agenda.cancelar(assunto)
+        quantos, mensagem = estado.agenda.cancelar(assunto)
         return mensagem
 
-    return agenda.descrever()
+    return estado.agenda.descrever()
 
 
 # ============================================================
@@ -7654,7 +7653,7 @@ def tool_liberar_maquina(fechar_ollama="sim"):
 
 def tool_backup(acao="status"):
     """Diz como esta o backup da memoria, ou copia agora."""
-    if backup is None:
+    if estado.backup is None:
         if nebell_backup is None:
             return (
                 "O módulo de backup não está na pasta. Confira se "
@@ -7667,7 +7666,7 @@ def tool_backup(acao="status"):
 
     if operacao in ("copiar", "copia", "agora", "salvar", "salva",
                     "fazer", "faz", "atualizar", "atualiza"):
-        deu_certo, mensagem = backup.copiar(forcar=True, motivo="a pedido")
+        deu_certo, mensagem = estado.backup.copiar(forcar=True, motivo="a pedido")
         return mensagem
 
     if operacao.startswith(("restaur", "recuper", "volt", "traz")):
@@ -7681,21 +7680,21 @@ def tool_backup(acao="status"):
             f"na pasta {BASE_DIR}. Ele confere o backup antes de trocar "
             "e guarda o banco atual como memoria.antes_de_restaurar.db, "
             "para nada se perder. "
-            + backup.descrever()
+            + estado.backup.descrever()
         )
 
-    return backup.descrever()
+    return estado.backup.descrever()
 
 
 def tool_estado_maquina():
     """Memoria, processador, placa, disco e bateria agora."""
-    if sentinela is None:
+    if estado.sentinela is None:
         if nebell_sentinela is None:
             return "O módulo de monitoramento não está na pasta."
 
         return nebell_sentinela.Sentinela().relatorio()
 
-    return sentinela.relatorio()
+    return estado.sentinela.relatorio()
 
 
 def tool_perfil(nome=""):
@@ -7765,12 +7764,12 @@ def tool_diagnostico():
     linhas.append(f"- perfil: {estado.perfil_atual}")
     linhas.append(f"- áudio: {estado.audio_backend}")
     linhas.append(f"- memória longa: {'ok' if memoria else 'desligada'}")
-    linhas.append(f"- agenda: {'ligada' if agenda else 'desligada'}")
+    linhas.append(f"- agenda: {'ligada' if estado.agenda else 'desligada'}")
     linhas.append(
-        f"- sentinela: {'vigiando' if sentinela and sentinela.ligada else 'parada'}"
+        f"- sentinela: {'vigiando' if estado.sentinela and estado.sentinela.ligada else 'parada'}"
     )
     linhas.append(
-        f"- backup: {backup.descrever() if backup else 'desligado'}"
+        f"- backup: {estado.backup.descrever() if estado.backup else 'desligado'}"
     )
 
     if nebell_visao is not None:
@@ -9814,10 +9813,10 @@ def hud_files(caminhos):
 
 def hud_set_mic(spec):
     """O seletor de microfone da janela."""
-    if mic_manager is None:
+    if estado.mic_manager is None:
         return
 
-    deu_certo, mensagem = mic_manager.use(spec)
+    deu_certo, mensagem = estado.mic_manager.use(spec)
     ui_message("nebell", mensagem)
 
     if deu_certo:
@@ -9884,8 +9883,8 @@ def hud_ready():
     """A pagina abriu: manda o estado inicial de uma vez."""
     atualizar_estatisticas(uma_vez=True)
 
-    if mic_manager is not None:
-        on_microphone_change(mic_manager)
+    if estado.mic_manager is not None:
+        on_microphone_change(estado.mic_manager)
 
     hud.set_esforco_nivel(esforco_atual[0])
     hud.set_stats(voice=estado.VOZ_ROTULO)
@@ -9934,14 +9933,14 @@ def voice_listen_loop():
                 agora = time.time()
 
                 if (
-                    mic_manager is not None
+                    estado.mic_manager is not None
                     and agora - tentou_recuperar_em >= SEGUNDOS_PARA_TENTAR_O_MIC
                 ):
                     tentou_recuperar_em = agora
 
                     try:
-                        if mic_manager.recover():
-                            on_microphone_change(mic_manager)
+                        if estado.mic_manager.recover():
+                            on_microphone_change(estado.mic_manager)
                     except Exception:
                         nebell_log and nebell_log.engolido("microfone: recuperacao automatica")
 
@@ -10086,15 +10085,15 @@ def coletar_estatisticas():
     dados["model"] = MODEL_NAME
     dados["voice"] = f"Piper · {VOICE_MODEL.parent.name}"
 
-    if whisper_model is not None:
+    if estado.whisper_model is not None:
         dados["stt"] = f"Whisper local · {WHISPER_MODEL}"
     elif STT_ENGINE == "whisper":
         dados["stt"] = "Google (instale o faster-whisper)"
     else:
         dados["stt"] = "Google"
 
-    if mic_manager is not None and mic_manager.device is not None:
-        dados["mic"] = mic_manager.device.short()
+    if estado.mic_manager is not None and estado.mic_manager.device is not None:
+        dados["mic"] = estado.mic_manager.device.short()
     else:
         dados["mic"] = "indisponível"
 
@@ -10361,25 +10360,24 @@ def avisar_do_nada(texto, gravidade="aviso"):
 
 def abrir_agenda():
     """Liga a agenda de lembretes, reusando o banco da memoria."""
-    global agenda
 
     if not AGENDA_LIGADA or nebell_agenda is None or memoria is None:
         return False
 
     try:
-        agenda = nebell_agenda.Agenda(
+        estado.agenda = nebell_agenda.Agenda(
             memoria,
             ao_disparar=lambda texto: avisar_do_nada(texto, "aviso"),
             log=print,
         )
 
-        if not agenda.criar_tabela():
-            agenda = None
+        if not estado.agenda.criar_tabela():
+            estado.agenda = None
             return False
 
-        agenda.iniciar()
+        estado.agenda.iniciar()
 
-        numeros = agenda.numeros()
+        numeros = estado.agenda.numeros()
 
         if numeros.get("ativos"):
             print(f"[Agenda] {numeros['ativos']} lembrete(s) à frente.")
@@ -10388,7 +10386,7 @@ def abrir_agenda():
 
     except Exception as exc:
         print(f"[Agenda] Não consegui ligar: {exc}")
-        agenda = None
+        estado.agenda = None
         return False
 
 
@@ -10403,10 +10401,10 @@ def copiar_memoria_no_fim():
     fechar_memoria, com o banco aberto. Reescrevê-lo agora, com o banco
     fechado, cobriria o relatório bom com uma folha de zeros.
     """
-    if backup is None:
+    if estado.backup is None:
         return
 
-    deu_certo, mensagem = backup.copiar(
+    deu_certo, mensagem = estado.backup.copiar(
         forcar=True, motivo="encerramento", com_relatorio=False
     )
     print(f"[Backup] {mensagem}")
@@ -10414,47 +10412,45 @@ def copiar_memoria_no_fim():
 
 def abrir_backup():
     """Liga o guardião da memória e faz a primeira cópia."""
-    global backup
 
     if not BACKUP_LIGADO or nebell_backup is None or memoria is None:
         return False
 
     try:
-        backup = nebell_backup.Backup(
+        estado.backup = nebell_backup.Backup(
             MEMORY_DB, BACKUP_DIR, memoria=memoria, log=print,
             intervalo=BACKUP_INTERVALO, geracoes=BACKUP_GERACOES,
         )
 
         # Uma cópia já na abertura: se a sessão morrer nos primeiros
         # minutos, o backup não fica com um dia de atraso.
-        deu_certo, mensagem = backup.copiar(forcar=True, motivo="abertura")
+        deu_certo, mensagem = estado.backup.copiar(forcar=True, motivo="abertura")
         print(f"[Backup] {mensagem}")
 
-        backup.iniciar()
+        estado.backup.iniciar()
         return True
 
     except Exception as exc:
         print(f"[Backup] Não consegui ligar: {exc}")
-        backup = None
+        estado.backup = None
         return False
 
 
 def iniciar_sentinela():
     """Liga a vigilancia do hardware."""
-    global sentinela
 
     if nebell_sentinela is None:
         return False
 
     try:
-        if sentinela is None:
-            sentinela = nebell_sentinela.Sentinela(
+        if estado.sentinela is None:
+            estado.sentinela = nebell_sentinela.Sentinela(
                 ao_avisar=avisar_do_nada, log=print,
                 intervalo=PERFIS[estado.perfil_atual]["sentinela_intervalo"],
             )
 
-        if not sentinela.ligada:
-            sentinela.iniciar()
+        if not estado.sentinela.ligada:
+            estado.sentinela.iniciar()
 
         return True
 
@@ -10465,27 +10461,27 @@ def iniciar_sentinela():
 
 def fechar_extras():
     """Desliga agenda, sentinela e backup no encerramento."""
-    if backup is not None:
+    if estado.backup is not None:
         try:
-            backup.parar()
+            estado.backup.parar()
         except Exception:
             pass
 
-    if agenda is not None:
+    if estado.agenda is not None:
         try:
-            agenda.parar()
+            estado.agenda.parar()
         except Exception:
             pass
 
-    if sentinela is not None:
+    if estado.sentinela is not None:
         try:
-            sentinela.parar()
+            estado.sentinela.parar()
         except Exception:
             pass
 
-    if backup is not None:
+    if estado.backup is not None:
         try:
-            backup.parar()
+            estado.backup.parar()
         except Exception:
             pass
 
@@ -10509,10 +10505,10 @@ def fechar_memoria():
         print(f"[Memória] Não consegui resumir a sessão: {exc}")
 
     # Com o banco ainda aberto, e já com o resumo de hoje dentro.
-    if backup is not None:
+    if estado.backup is not None:
         try:
-            if backup.escrever_relatorio():
-                print(f"[Backup] Relatório em {backup.destino_relatorio}.")
+            if estado.backup.escrever_relatorio():
+                print(f"[Backup] Relatório em {estado.backup.destino_relatorio}.")
         except Exception as exc:
             print(f"[Backup] Não consegui gravar o relatório: {exc}")
 
