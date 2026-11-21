@@ -1767,10 +1767,10 @@ def wait_for_speech():
     ultima_fala_em[0] = time.time()
 
 
-def ui_state(estado):
+def ui_state(situacao):
     """Reflete na HUD o que o NEBELL esta fazendo agora."""
     if hud is not None:
-        hud.set_state(estado)
+        hud.set_state(situacao)
 
 
 def ui_message(papel, texto):
@@ -6080,8 +6080,8 @@ def tool_bluetooth(acao="status", dispositivo=None):
             and "bluetooth" not in normalize(d.get("FriendlyName", ""))
         ]
 
-        estado = "ligado" if ligados else "desligado ou indisponível"
-        texto = f"Bluetooth {estado}"
+        situacao = "ligado" if ligados else "desligado ou indisponível"
+        texto = f"Bluetooth {situacao}"
 
         if pareados:
             texto += ". Dispositivos ativos: " + ", ".join(
@@ -6150,7 +6150,7 @@ def alternar_bluetooth(ligar):
     ):
         return "O usuário negou."
 
-    estado = "On" if ligar else "Off"
+    situacao = "On" if ligar else "Off"
 
     # Caminho 1: API de radios (WinRT). Nao precisa de administrador.
     script_radio = f"""
@@ -6174,7 +6174,7 @@ try {{
     if (-not $bt) {{ 'sem_radio'; exit }}
     foreach ($r in $bt) {{
         $op = $asTask.MakeGenericMethod([Windows.Devices.Radios.RadioAccessStatus]).Invoke(
-            $null, @($r.SetStateAsync('{estado}')))
+            $null, @($r.SetStateAsync('{situacao}')))
         $op.Wait(5000) | Out-Null
     }}
     'ok'
