@@ -133,7 +133,7 @@ def setUpModule():
     fake_voice = FakeVoice()
     J.estado.voice = fake_voice
     J.METRICS = False
-    J.audio_backend = "nenhum"      # sem placa de som nos testes
+    J.estado.audio_backend = "nenhum"      # sem placa de som nos testes
 
     # As duas etapas da voz rodam de verdade, so que com o Piper simulado.
     garantir_trabalhadores()
@@ -861,7 +861,7 @@ class TestMemoria(NebellTest):
     def test_memoria_entra_no_prompt(self):
         J.tool_lembrar("mora na Bahia")
         self.assertIn("mora na Bahia", J.build_system_prompt())
-        self.assertIn("mora na Bahia", J.history[0]["content"])
+        self.assertIn("mora na Bahia", J.estado.history[0]["content"])
 
     def test_preferencia_entra_como_preferencia(self):
         J.tool_lembrar("respostas de uma frase", "preferencia")
@@ -905,9 +905,9 @@ class TestHistoricoDeConversas(NebellTest):
         self.assertTrue(J.carregar_conversa(alvo))
         self.assertEqual(J.memoria.conversa_id, alvo)
 
-        papeis = [m["role"] for m in J.history]
+        papeis = [m["role"] for m in J.estado.history]
         self.assertEqual(papeis, ["system", "user", "assistant"])
-        self.assertEqual(J.history[1]["content"], "como está o projeto?")
+        self.assertEqual(J.estado.history[1]["content"], "como está o projeto?")
 
     def test_carregar_conversa_id_inexistente(self):
         self.assertFalse(J.carregar_conversa(999999))
@@ -1181,27 +1181,27 @@ class TestComandosAprendidos(NebellTest):
 class TestHistorico(NebellTest):
     def test_mantem_o_sistema(self):
         for i in range(60):
-            J.history.append({"role": "user", "content": f"p{i}"})
-            J.history.append({"role": "assistant", "content": f"r{i}"})
+            J.estado.history.append({"role": "user", "content": f"p{i}"})
+            J.estado.history.append({"role": "assistant", "content": f"r{i}"})
 
         J.trim_history()
-        self.assertEqual(J.history[0]["role"], "system")
-        self.assertLessEqual(len(J.history), J.MAX_HISTORY_MESSAGES + 1)
+        self.assertEqual(J.estado.history[0]["role"], "system")
+        self.assertLessEqual(len(J.estado.history), J.MAX_HISTORY_MESSAGES + 1)
 
     def test_nao_comeca_em_ferramenta_orfa(self):
-        J.history.append({"role": "user", "content": "x"})
+        J.estado.history.append({"role": "user", "content": "x"})
         for i in range(40):
-            J.history.append({"role": "assistant", "content": "", "tool_calls": [{}]})
-            J.history.append({"role": "tool", "tool_name": "t", "content": "r"})
+            J.estado.history.append({"role": "assistant", "content": "", "tool_calls": [{}]})
+            J.estado.history.append({"role": "tool", "tool_name": "t", "content": "r"})
 
         J.trim_history()
-        self.assertEqual(J.history[1]["role"], "user")
+        self.assertEqual(J.estado.history[1]["role"], "user")
 
     def test_historico_curto_fica_intacto(self):
-        J.history.append({"role": "user", "content": "oi"})
-        antes = list(J.history)
+        J.estado.history.append({"role": "user", "content": "oi"})
+        antes = list(J.estado.history)
         J.trim_history()
-        self.assertEqual(J.history, antes)
+        self.assertEqual(J.estado.history, antes)
 
 
 # ============================================================
@@ -1251,7 +1251,7 @@ class TestModelo(NebellTest):
         falas = flush_speech()
         self.assertIn("Claro senhor,", falas[0])
         self.assertIn("são vinte graus.", " ".join(falas))
-        self.assertEqual(J.history[-1]["role"], "assistant")
+        self.assertEqual(J.estado.history[-1]["role"], "assistant")
 
     def test_aquecimento_manda_o_prompt_do_sistema(self):
         """
@@ -1313,7 +1313,7 @@ class TestModelo(NebellTest):
         with mock.patch.object(J, "session", fake):
             J.ask_nebell("me diga o horário completo por favor")
 
-        papeis = [m["role"] for m in J.history]
+        papeis = [m["role"] for m in J.estado.history]
         self.assertIn("tool", papeis)
         self.assertIn("Agora são dez horas.", " ".join(flush_speech()))
         # A segunda chamada ja leva o resultado da ferramenta no historico.
@@ -1419,7 +1419,7 @@ class TestAtalhos(NebellTest):
 
         self.assertEqual(fake.payloads, [])
         self.assertTrue(flush_speech())
-        self.assertEqual(J.history[-1]["role"], "assistant")
+        self.assertEqual(J.estado.history[-1]["role"], "assistant")
 
     def test_desligar_o_atalho(self):
         J.FAST_PATH = False
@@ -1641,7 +1641,7 @@ class TestLocalizacao(NebellTest):
     def test_entra_no_prompt_do_sistema(self):
         J.estado.location_info.update({"cidade": "Cachoeira", "regiao": "Bahia", "pais": "Brasil"})
         J.refresh_system_prompt()
-        self.assertIn("Cachoeira, Bahia, Brasil", J.history[0]["content"])
+        self.assertIn("Cachoeira, Bahia, Brasil", J.estado.history[0]["content"])
 
     def test_atalho_responde_sem_o_modelo(self):
         J.estado.location_info.update({"cidade": "Cachoeira", "pais": "Brasil"})
@@ -1759,7 +1759,7 @@ class TestLocalizacaoNaHora(NebellTest):
 
     def test_prompt_avisa_quando_nao_sabe(self):
         J.refresh_system_prompt()
-        self.assertIn("minha_localizacao", J.history[0]["content"])
+        self.assertIn("minha_localizacao", J.estado.history[0]["content"])
 
 
 class TestRede(NebellTest):
@@ -2061,16 +2061,16 @@ class FakePyAudioModule(types.ModuleType):
 class TestReproducaoDeAudio(NebellTest):
     def setUp(self):
         super().setUp()
-        J.audio_backend = "nenhum"
-        J._output_stream = None
-        J._output_format = None
-        J._pyaudio = None
+        J.estado.audio_backend = "nenhum"
+        J.estado._output_stream = None
+        J.estado._output_format = None
+        J.estado._pyaudio = None
         J.TEMP_AUDIO_DIR = TMP / "audio_temp"
 
     def tearDown(self):
-        J.audio_backend = "nenhum"
-        J._output_stream = None
-        J._pyaudio = None
+        J.estado.audio_backend = "nenhum"
+        J.estado._output_stream = None
+        J.estado._pyaudio = None
 
     def test_winsound_recusa_memoria_assincrona(self):
         """O bug original: tocar da memória em modo assíncrono é proibido."""
@@ -2083,7 +2083,7 @@ class TestReproducaoDeAudio(NebellTest):
         dados, segundos = J.synthesize_to_bytes("teste")
 
         with mock.patch.object(J, "winsound", falso):
-            J.audio_backend = "winsound_file"
+            J.estado.audio_backend = "winsound_file"
             J.play_audio(dados, segundos)
 
         self.assertEqual(len(falso.tocados), 1)
@@ -2094,7 +2094,7 @@ class TestReproducaoDeAudio(NebellTest):
         dados, segundos = J.synthesize_to_bytes("teste")
 
         with mock.patch.object(J, "winsound", falso):
-            J.audio_backend = "winsound_file"
+            J.estado.audio_backend = "winsound_file"
             J.play_audio(dados, segundos)
 
         sobras = list(J.TEMP_AUDIO_DIR.glob("*.wav"))
@@ -2106,7 +2106,7 @@ class TestReproducaoDeAudio(NebellTest):
         canais, largura, taxa, quadros = J.wav_parts(dados)
 
         with mock.patch.dict(sys.modules, {"pyaudio": modulo}):
-            J.audio_backend = "pyaudio"
+            J.estado.audio_backend = "pyaudio"
             J.play_audio(dados, segundos)
 
         self.assertEqual(bytes(modulo.streams[0].escrito), quadros)
@@ -2119,7 +2119,7 @@ class TestReproducaoDeAudio(NebellTest):
         J.stop_speaking_event.set()
         try:
             with mock.patch.dict(sys.modules, {"pyaudio": modulo}):
-                J.audio_backend = "pyaudio"
+                J.estado.audio_backend = "pyaudio"
                 J.play_audio(dados, 1.0)
         finally:
             J.stop_speaking_event.clear()
@@ -2132,7 +2132,7 @@ class TestReproducaoDeAudio(NebellTest):
         dados, segundos = J.synthesize_to_bytes("teste")
 
         with mock.patch.dict(sys.modules, {"pyaudio": modulo}):
-            J.audio_backend = "pyaudio"
+            J.estado.audio_backend = "pyaudio"
             J.play_audio(dados, segundos)
             J.play_audio(dados, segundos)
 
@@ -2144,17 +2144,17 @@ class TestReproducaoDeAudio(NebellTest):
 
         with mock.patch.object(J, "play_with_pyaudio", side_effect=Exception("sem placa")), \
              mock.patch.object(J, "winsound", falso):
-            J.audio_backend = "pyaudio"
+            J.estado.audio_backend = "pyaudio"
             J.play_audio(dados, segundos)
 
-        self.assertEqual(J.audio_backend, "winsound_file")
+        self.assertEqual(J.estado.audio_backend, "winsound_file")
         self.assertEqual(falso.tocados[0][0], "arquivo")
 
     def test_escolha_automatica_prefere_pyaudio(self):
         modulo = FakePyAudioModule()
 
         with mock.patch.dict(sys.modules, {"pyaudio": modulo}):
-            J._pyaudio = None
+            J.estado._pyaudio = None
             self.assertEqual(J.detect_audio_backend(), "pyaudio")
 
     def test_sem_pyaudio_usa_winsound_por_arquivo(self):
@@ -2162,13 +2162,13 @@ class TestReproducaoDeAudio(NebellTest):
 
         with mock.patch.dict(sys.modules, {"pyaudio": None}), \
              mock.patch.object(J, "winsound", falso):
-            J._pyaudio = None
+            J.estado._pyaudio = None
             self.assertEqual(J.detect_audio_backend(), "winsound_file")
 
     def test_sem_audio_nenhum(self):
         with mock.patch.dict(sys.modules, {"pyaudio": None}), \
              mock.patch.object(J, "winsound", None):
-            J._pyaudio = None
+            J.estado._pyaudio = None
             self.assertEqual(J.detect_audio_backend(), "nenhum")
 
     def test_backend_forcado_na_configuracao(self):
@@ -2250,7 +2250,7 @@ class TestInterrupcao(NebellTest):
         with mock.patch.object(J, "session", fake):
             J.ask_nebell("pergunta qualquer")
 
-        ultima = J.history[-1]
+        ultima = J.estado.history[-1]
         self.assertEqual(ultima["role"], "assistant")
         self.assertIn("interrompido", ultima["content"])
         # Sem chamada de ferramenta pendurada, senão o Ollama recusa a próxima.
@@ -3347,7 +3347,7 @@ class TestModoHud(NebellTest):
     def test_nivel_de_audio_vai_para_a_janela(self):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
-        J._level_sent_at = 0
+        J.estado._level_sent_at = 0
         J.feed_level(quadro)
         self.hud.set_level.assert_called_once()
         self.assertGreater(self.hud.set_level.call_args.args[0], 0.5)
@@ -3355,7 +3355,7 @@ class TestModoHud(NebellTest):
     def test_nivel_nao_e_enviado_toda_hora(self):
         import struct
         quadro = struct.pack("<8h", *([3000] * 8))
-        J._level_sent_at = 0
+        J.estado._level_sent_at = 0
         J.feed_level(quadro)
         J.feed_level(quadro)
         self.assertEqual(self.hud.set_level.call_count, 1)
@@ -3374,7 +3374,7 @@ class TestModoHud(NebellTest):
     def test_nivel_do_microfone_vai_para_a_janela(self):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
-        J._mic_level_sent_at = 0
+        J.estado._mic_level_sent_at = 0
         J.mic_mudo.clear()
         J.busy_event.clear()
         J.feed_mic_level(quadro)
@@ -3383,7 +3383,7 @@ class TestModoHud(NebellTest):
     def test_mic_mudo_nao_manda_nivel(self):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
-        J._mic_level_sent_at = 0
+        J.estado._mic_level_sent_at = 0
         J.busy_event.clear()
         J.mic_mudo.set()
         try:
@@ -3395,7 +3395,7 @@ class TestModoHud(NebellTest):
     def test_nivel_do_mic_cala_enquanto_a_nebell_fala(self):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
-        J._mic_level_sent_at = 0
+        J.estado._mic_level_sent_at = 0
         J.mic_mudo.clear()
         J.busy_event.set()
         try:
@@ -3850,13 +3850,13 @@ class TestSelecaoComAsNovas(NebellTest):
 class TestPerfis(NebellTest):
     def setUp(self):
         super().setUp()
-        self.perfil_antes = J.perfil_atual
-        J.perfil_atual = "equilibrado"
+        self.perfil_antes = J.estado.perfil_atual
+        J.estado.perfil_atual = "equilibrado"
         J.NUM_CTX = J.PERFIS["equilibrado"]["num_ctx"]
         J.MODEL_OPTIONS["num_ctx"] = J.NUM_CTX
 
     def tearDown(self):
-        J.perfil_atual = self.perfil_antes
+        J.estado.perfil_atual = self.perfil_antes
 
     def test_contexto_cabe_na_placa_de_seis_gigas(self):
         # 16384 de contexto custa perto de um giga de VRAM, que e o que
@@ -3877,7 +3877,7 @@ class TestPerfis(NebellTest):
             deu, mensagem = J.aplicar_perfil("jogo")
 
         self.assertTrue(deu)
-        self.assertEqual(J.perfil_atual, "jogo")
+        self.assertEqual(J.estado.perfil_atual, "jogo")
         self.assertEqual(J.WHISPER_DEVICE, "cpu")
         self.assertEqual(J.MODEL_OPTIONS["num_ctx"], J.PERFIS["jogo"]["num_ctx"])
 
@@ -3890,13 +3890,13 @@ class TestPerfis(NebellTest):
             if esperado is None:
                 continue
 
-            J.perfil_atual = "equilibrado"
+            J.estado.perfil_atual = "equilibrado"
 
             with mock.patch.object(J.threading, "Thread"):
                 deu, _ = J.aplicar_perfil(dito)
 
             self.assertTrue(deu, dito)
-            self.assertEqual(J.perfil_atual, esperado, dito)
+            self.assertEqual(J.estado.perfil_atual, esperado, dito)
 
     def test_perfil_inexistente_lista_os_que_existem(self):
         deu, mensagem = J.aplicar_perfil("turbo")
@@ -3923,7 +3923,7 @@ class TestPerfis(NebellTest):
 
     def test_perfil_sem_nome_lista_tudo(self):
         texto = J.tool_perfil()
-        self.assertIn(J.perfil_atual, texto)
+        self.assertIn(J.estado.perfil_atual, texto)
 
         for nome in J.PERFIS:
             self.assertIn(nome, texto)
@@ -3933,7 +3933,7 @@ class TestPerfis(NebellTest):
             resposta = J.local_fast_answer("ativa o modo jogo")
 
         self.assertIsNotNone(resposta)
-        self.assertEqual(J.perfil_atual, "jogo")
+        self.assertEqual(J.estado.perfil_atual, "jogo")
 
     def test_atalho_local_responde_qual_perfil(self):
         self.assertIn("equilibrado", J.local_fast_answer("qual o perfil"))
@@ -3942,14 +3942,14 @@ class TestPerfis(NebellTest):
 class TestModoDesenvolvedor(NebellTest):
     def setUp(self):
         super().setUp()
-        J.dev_mode = False
+        J.estado.dev_mode = False
         J.DEV_LOG_FILE = TMP / "dev.log"
 
         if J.DEV_LOG_FILE.exists():
             J.DEV_LOG_FILE.unlink()
 
     def tearDown(self):
-        J.dev_mode = False
+        J.estado.dev_mode = False
 
     def test_desligado_nao_grava_nada(self):
         J.dev_log("qualquer coisa")
@@ -3957,10 +3957,10 @@ class TestModoDesenvolvedor(NebellTest):
 
     def test_ligar_e_desligar(self):
         self.assertIn("ligado", J.tool_modo_desenvolvedor("ligar"))
-        self.assertTrue(J.dev_mode)
+        self.assertTrue(J.estado.dev_mode)
 
         self.assertIn("desligado", J.tool_modo_desenvolvedor("desligar"))
-        self.assertFalse(J.dev_mode)
+        self.assertFalse(J.estado.dev_mode)
 
     def test_grava_quando_ligado(self):
         J.tool_modo_desenvolvedor("ligar")
@@ -3975,7 +3975,7 @@ class TestModoDesenvolvedor(NebellTest):
         self.assertIn("vazio", J.tool_modo_desenvolvedor("log"))
 
     def test_log_traz_as_ultimas_linhas(self):
-        J.dev_mode = True
+        J.estado.dev_mode = True
 
         for numero in range(40):
             J.dev_log(f"linha {numero}")
@@ -3985,7 +3985,7 @@ class TestModoDesenvolvedor(NebellTest):
         self.assertNotIn("linha 1 ", texto)
 
     def test_run_tool_registra_a_chamada(self):
-        J.dev_mode = True
+        J.estado.dev_mode = True
         J.run_tool("data_hora", {})
 
         registro = J.DEV_LOG_FILE.read_text(encoding="utf-8")
@@ -3993,7 +3993,7 @@ class TestModoDesenvolvedor(NebellTest):
         self.assertIn("devolveu", registro)
 
     def test_run_tool_registra_a_correcao_de_argumento(self):
-        J.dev_mode = True
+        J.estado.dev_mode = True
 
         with mock.patch.object(J, "tool_pesquisar_web", lambda consulta: "ok"), \
                 mock.patch.dict(
@@ -4004,7 +4004,7 @@ class TestModoDesenvolvedor(NebellTest):
         self.assertIn("corrigidos", J.DEV_LOG_FILE.read_text(encoding="utf-8"))
 
     def test_erro_de_ferramenta_vai_para_o_registro(self):
-        J.dev_mode = True
+        J.estado.dev_mode = True
 
         with mock.patch.dict(
             J.TOOL_FUNCTIONS, {"data_hora": lambda: 1 / 0}
@@ -4015,7 +4015,7 @@ class TestModoDesenvolvedor(NebellTest):
         self.assertIn("estourou", J.DEV_LOG_FILE.read_text(encoding="utf-8"))
 
     def test_prompt_avisa_o_modelo(self):
-        J.dev_mode = True
+        J.estado.dev_mode = True
         self.assertIn("MODO DESENVOLVEDOR", J.build_system_prompt())
 
 
@@ -4217,13 +4217,13 @@ class TestSentinelaLigada(NebellTest):
 
     def test_perfil_estudo_desliga_a_vigilancia(self):
         J.iniciar_sentinela()
-        J.perfil_atual = "equilibrado"
+        J.estado.perfil_atual = "equilibrado"
 
         with mock.patch.object(J.threading, "Thread"):
             J.aplicar_perfil("estudo")
 
         self.assertFalse(J.sentinela.ligada)
-        J.perfil_atual = "equilibrado"
+        J.estado.perfil_atual = "equilibrado"
 
 
 class TestDiagnostico(NebellTest):
@@ -4238,7 +4238,7 @@ class TestDiagnostico(NebellTest):
     def test_mostra_o_modelo_e_o_perfil(self):
         texto = J.tool_diagnostico()
         self.assertIn(J.MODEL_NAME, texto)
-        self.assertIn(J.perfil_atual, texto)
+        self.assertIn(J.estado.perfil_atual, texto)
 
     def test_aponta_modulo_faltando(self):
         with mock.patch.object(J, "nebell_visao", None):
@@ -4799,11 +4799,11 @@ class TestOllamaFoiNosso(NebellTest):
 class TestPerfilEIntervaloDaSentinela(NebellTest):
     def setUp(self):
         super().setUp()
-        self.perfil_antes = J.perfil_atual
-        J.perfil_atual = "equilibrado"
+        self.perfil_antes = J.estado.perfil_atual
+        J.estado.perfil_atual = "equilibrado"
 
     def tearDown(self):
-        J.perfil_atual = self.perfil_antes
+        J.estado.perfil_atual = self.perfil_antes
 
         if J.sentinela is not None:
             J.sentinela.parar()

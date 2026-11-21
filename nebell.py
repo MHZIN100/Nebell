@@ -823,9 +823,6 @@ agenda = None              # nebell_agenda.Agenda
 sentinela = None           # nebell_sentinela.Sentinela
 backup = None              # nebell_backup.Backup
 backup = None              # nebell_backup.Backup
-perfil_atual = PERFIL_PADRAO
-dev_mode = DEV_MODE
-history = []
 class Estado:
     """Estado de execucao da NEBELL reunido num objeto, em vez de globais
     soltas. Refatoracao em fatias (strangler): cada grupo coeso migra para
@@ -854,6 +851,24 @@ class Estado:
         self.VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
         self.synthesis_config = None        # ajuste de voz do Piper, montado na abertura
 
+        # Audio: backend, metricas da fala, contadores de nivel e handles de reproducao.
+        self.audio_backend = "winsound_memory"
+        self.metrics = {"request_started": 0.0, "first_audio": 0.0}
+        self._level_sent_at = 0.0
+        self._mic_level_sent_at = 0.0        # contador proprio do nivel do microfone
+        self._pyaudio = None
+        self._output_stream = None
+        self._output_format = None
+        self._current_audio = None          # mantem o buffer vivo durante a reproducao
+        self._numpy = None
+
+        # Conversa da sessao: as mensagens trocadas (system + turnos).
+        self.history = []
+
+        # Perfil de hardware ativo e modo de desenvolvimento.
+        self.perfil_atual = PERFIL_PADRAO
+        self.dev_mode = DEV_MODE
+
         # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
 
@@ -880,15 +895,7 @@ busy_event = threading.Event()      # falando ou gerando: pode ser cortado
 cancel_event = threading.Event()    # o usuario mandou parar
 troca_de_voz = threading.Lock()
 mic_mudo = threading.Event()        # ligado = microfone silenciado pelo usuario
-audio_backend = "winsound_memory"
-_pyaudio = None
-_output_stream = None
-_output_format = None
-_current_audio = None          # mantem o buffer vivo durante a reproducao
-_level_sent_at = 0.0
-_mic_level_sent_at = 0.0        # contador proprio do nivel do microfone
 _filler_cache = {}
-metrics = {"request_started": 0.0, "first_audio": 0.0}
 
 # Descarregar na ociosidade: depois de um tempo parado, soltamos o qwen
 # (VRAM) e o Whisper de proposito; os dois recarregam sozinhos no proximo
@@ -1355,14 +1362,13 @@ def feed_level(pedaco):
     Manda o volume do trecho para a HUD, para as barras acompanharem a
     voz de verdade. Envia no maximo umas quinze vezes por segundo.
     """
-    global _level_sent_at
 
     agora = time.time()
 
-    if agora - _level_sent_at < 0.07:
+    if agora - estado._level_sent_at < 0.07:
         return
 
-    _level_sent_at = agora
+    estado._level_sent_at = agora
 
     if hud is not None:
         hud.set_level(nivel_rms(pedaco))
@@ -1379,17 +1385,16 @@ def feed_mic_level(pedaco):
     contador proprio. Nunca levanta: e chamada de dentro da thread de
     audio e um erro aqui nao pode derrubar a escuta.
     """
-    global _mic_level_sent_at
 
     if hud is None or mic_mudo.is_set() or busy_event.is_set():
         return
 
     agora = time.time()
 
-    if agora - _mic_level_sent_at < 0.07:
+    if agora - estado._mic_level_sent_at < 0.07:
         return
 
-    _mic_level_sent_at = agora
+    estado._mic_level_sent_at = agora
 
     try:
         hud.set_level(nivel_rms(pedaco))
@@ -1398,13 +1403,12 @@ def feed_mic_level(pedaco):
 
 
 def get_pyaudio():
-    global _pyaudio
 
-    if _pyaudio is None:
+    if estado._pyaudio is None:
         import pyaudio
-        _pyaudio = pyaudio.PyAudio()
+        estado._pyaudio = pyaudio.PyAudio()
 
-    return _pyaudio
+    return estado._pyaudio
 
 
 def play_with_pyaudio(data):
@@ -1415,7 +1419,6 @@ def play_with_pyaudio(data):
     grava nada em disco e o PyAudio já vem instalado por causa do
     microfone.
     """
-    global _output_stream, _output_format
 
     import pyaudio
 
@@ -1423,21 +1426,21 @@ def play_with_pyaudio(data):
     formato = (canais, largura, taxa)
     dispositivo = get_pyaudio()
 
-    if _output_stream is None or _output_format != formato:
-        if _output_stream is not None:
+    if estado._output_stream is None or estado._output_format != formato:
+        if estado._output_stream is not None:
             try:
-                _output_stream.stop_stream()
-                _output_stream.close()
+                estado._output_stream.stop_stream()
+                estado._output_stream.close()
             except Exception:
                 pass
 
-        _output_stream = dispositivo.open(
+        estado._output_stream = dispositivo.open(
             format=dispositivo.get_format_from_width(largura),
             channels=canais,
             rate=taxa,
             output=True,
         )
-        _output_format = formato
+        estado._output_format = formato
 
     bloco = 1024 * canais * largura
 
@@ -1445,8 +1448,8 @@ def play_with_pyaudio(data):
         if stop_speaking_event.is_set():
             # stop_stream descarta o que ainda estava na fila da placa.
             try:
-                _output_stream.stop_stream()
-                _output_stream.start_stream()
+                estado._output_stream.stop_stream()
+                estado._output_stream.start_stream()
             except Exception:
                 pass
             return
@@ -1457,7 +1460,7 @@ def play_with_pyaudio(data):
         if hud is not None and largura == 2:
             feed_level(pedaco)
 
-        _output_stream.write(pedaco)
+        estado._output_stream.write(pedaco)
 
 
 def play_with_winsound_file(data, seconds):
@@ -1511,11 +1514,10 @@ def limpar_audios_temporarios():
 
 def detect_audio_backend():
     """Escolhe como tocar o áudio e deixa registrado qual deu certo."""
-    global audio_backend
 
     if AUDIO_BACKEND != "auto":
-        audio_backend = AUDIO_BACKEND
-        return audio_backend
+        estado.audio_backend = AUDIO_BACKEND
+        return estado.audio_backend
 
     if ALLOW_INTERRUPT:
         try:
@@ -1523,32 +1525,31 @@ def detect_audio_backend():
             dispositivo = get_pyaudio()
 
             if dispositivo.get_device_count() > 0:
-                audio_backend = "pyaudio"
-                return audio_backend
+                estado.audio_backend = "pyaudio"
+                return estado.audio_backend
         except Exception as exc:
             print(f"[Áudio] PyAudio indisponível ({exc}); usando o winsound.")
 
     if winsound is not None:
-        audio_backend = "winsound_file" if ALLOW_INTERRUPT else "winsound_memory"
+        estado.audio_backend = "winsound_file" if ALLOW_INTERRUPT else "winsound_memory"
     else:
-        audio_backend = "nenhum"
+        estado.audio_backend = "nenhum"
 
-    return audio_backend
+    return estado.audio_backend
 
 
 def play_audio(data, seconds):
     """Toca um trecho, de um jeito que possa ser cortado no meio."""
-    global _current_audio
 
-    if audio_backend == "nenhum":
+    if estado.audio_backend == "nenhum":
         time.sleep(min(seconds, 0.05))
         return
 
-    _current_audio = data
+    estado._current_audio = data
     speaking_active.set()
 
     try:
-        if audio_backend == "pyaudio":
+        if estado.audio_backend == "pyaudio":
             try:
                 play_with_pyaudio(data)
                 return
@@ -1556,7 +1557,7 @@ def play_audio(data, seconds):
                 print(f"\n[Áudio] PyAudio falhou ({exc}); mudando para o winsound.")
                 mudar_backend_para_winsound()
 
-        if audio_backend == "winsound_file":
+        if estado.audio_backend == "winsound_file":
             play_with_winsound_file(data, seconds)
             return
 
@@ -1571,38 +1572,36 @@ def play_audio(data, seconds):
 
 
 def fechar_audio():
-    global _output_stream, _pyaudio
 
-    if _output_stream is not None:
+    if estado._output_stream is not None:
         try:
-            _output_stream.stop_stream()
-            _output_stream.close()
+            estado._output_stream.stop_stream()
+            estado._output_stream.close()
         except Exception:
             pass
-        _output_stream = None
+        estado._output_stream = None
 
-    if _pyaudio is not None:
+    if estado._pyaudio is not None:
         try:
-            _pyaudio.terminate()
+            estado._pyaudio.terminate()
         except Exception:
             pass
-        _pyaudio = None
+        estado._pyaudio = None
 
 
 def mudar_backend_para_winsound():
-    global audio_backend, _output_stream
 
-    if _output_stream is not None:
+    if estado._output_stream is not None:
         try:
-            _output_stream.close()
+            estado._output_stream.close()
         except Exception:
             pass
-        _output_stream = None
+        estado._output_stream = None
 
     if winsound is None:
-        audio_backend = "nenhum"
+        estado.audio_backend = "nenhum"
     else:
-        audio_backend = "winsound_file" if ALLOW_INTERRUPT else "winsound_memory"
+        estado.audio_backend = "winsound_file" if ALLOW_INTERRUPT else "winsound_memory"
 
 
 def fala_comecou():
@@ -1677,7 +1676,6 @@ def synth_worker():
 
 def player_worker():
     """Etapa 2: toca os audios na ordem, sem pausas entre os trechos."""
-    global metrics
 
     while True:
         item = audio_queue.get()
@@ -1694,9 +1692,9 @@ def player_worker():
             if busy_event.is_set():
                 ui_state("speaking")
 
-            if METRICS and metrics["request_started"] and not metrics["first_audio"]:
-                metrics["first_audio"] = time.time()
-                elapsed = metrics["first_audio"] - metrics["request_started"]
+            if METRICS and estado.metrics["request_started"] and not estado.metrics["first_audio"]:
+                estado.metrics["first_audio"] = time.time()
+                elapsed = estado.metrics["first_audio"] - estado.metrics["request_started"]
                 print(f"\n[primeiro áudio em {elapsed:.1f}s]")
 
             play_audio(data, seconds)
@@ -2977,7 +2975,6 @@ whisper_model = None
 whisper_soltado = [False]       # soltado de proposito; recarrega ao precisar
 whisper_ready = threading.Event()
 _warned_google = [False]
-_numpy = None
 
 
 def get_numpy():
@@ -2988,13 +2985,12 @@ def get_numpy():
     for mexido no meio, o reimport de uma extensao C falha com
     "cannot load module more than once per process".
     """
-    global _numpy
 
-    if _numpy is None:
+    if estado._numpy is None:
         import numpy
-        _numpy = numpy
+        estado._numpy = numpy
 
-    return _numpy
+    return estado._numpy
 
 WAKE_WORDS = (
     "nebell", "nebel", "nebela", "nebelo", "nebeli",
@@ -3719,7 +3715,7 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
     if memoria is not None:
         extra += memoria.briefing()
 
-    if dev_mode:
+    if estado.dev_mode:
         extra += (
             "\nMODO DESENVOLVEDOR LIGADO: ao usar uma ferramenta, diga em "
             "uma frase curta qual usou e por quê, antes da resposta.\n"
@@ -3731,14 +3727,13 @@ QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
 
 
 def reset_history():
-    global history
-    history = [{"role": "system", "content": build_system_prompt()}]
-    return history
+    estado.history = [{"role": "system", "content": build_system_prompt()}]
+    return estado.history
 
 
 def refresh_system_prompt(para_codigo=False):
-    if history:
-        history[0] = {
+    if estado.history:
+        estado.history[0] = {
             "role": "system",
             "content": build_system_prompt(para_codigo),
         }
@@ -3780,7 +3775,6 @@ def carregar_conversa(id_conversa):
     soltas espalhadas. Devolve True quando deu certo; False quando nao ha
     memoria ou o id nao existe (aí nada muda).
     """
-    global history
 
     if memoria is None:
         return False
@@ -3794,7 +3788,7 @@ def carregar_conversa(id_conversa):
     for m in mensagens:
         if m["papel"] in ("user", "assistant"):
             novo.append({"role": m["papel"], "content": m["conteudo"]})
-    history = novo
+    estado.history = novo
 
     if hud is not None:
         hud.limpar_conversa()
@@ -7004,7 +6998,7 @@ def dev_log(mensagem):
     Fica em arquivo, nao na tela, para nao sujar a conversa; a tela
     recebe so o resumo de uma linha.
     """
-    if not dev_mode:
+    if not estado.dev_mode:
         return
 
     linha = f"{datetime.now().strftime('%H:%M:%S')} {mensagem}"
@@ -7058,7 +7052,7 @@ def aplicar_perfil(nome):
     carregado, no modelo de escuta e na sentinela. Devolve
     (deu_certo, mensagem).
     """
-    global perfil_atual, NUM_CTX, KEEP_ALIVE, MAX_REPLY_TOKENS
+    global NUM_CTX, KEEP_ALIVE, MAX_REPLY_TOKENS
     global WHISPER_MODEL, WHISPER_DEVICE, whisper_model
 
     pedido = normalize(nome)
@@ -7079,7 +7073,7 @@ def aplicar_perfil(nome):
             + ", ".join(PERFIS) + "."
         )
 
-    if escolhido == perfil_atual:
+    if escolhido == estado.perfil_atual:
         return True, f"Já estou no perfil {escolhido}."
 
     dados = PERFIS[escolhido]
@@ -7088,7 +7082,7 @@ def aplicar_perfil(nome):
         or dados["whisper_device"] != WHISPER_DEVICE
     )
 
-    perfil_atual = escolhido
+    estado.perfil_atual = escolhido
     NUM_CTX = dados["num_ctx"]
     MAX_REPLY_TOKENS = dados["num_predict"]
     KEEP_ALIVE = dados["keep_alive"]
@@ -7707,7 +7701,7 @@ def tool_estado_maquina():
 def tool_perfil(nome=""):
     """Troca o perfil de uso, ou diz qual esta valendo."""
     if not nome:
-        linhas = [f"Perfil agora: {perfil_atual}."]
+        linhas = [f"Perfil agora: {estado.perfil_atual}."]
         linhas.extend(
             f"- {chave}: {dados['descricao']}"
             for chave, dados in PERFIS.items()
@@ -7720,12 +7714,11 @@ def tool_perfil(nome=""):
 
 def tool_modo_desenvolvedor(acao="status"):
     """Liga, desliga ou mostra o modo desenvolvedor."""
-    global dev_mode
 
     operacao = normalize(acao)
 
     if operacao in ("ligar", "liga", "ativar", "ativa", "on", "sim"):
-        dev_mode = True
+        estado.dev_mode = True
         dev_log("modo desenvolvedor ligado")
         return (
             "Modo desenvolvedor ligado. Vou mostrar cada ferramenta que "
@@ -7733,14 +7726,14 @@ def tool_modo_desenvolvedor(acao="status"):
         )
 
     if operacao in ("desligar", "desliga", "desativar", "off", "nao", "não"):
-        dev_mode = False
+        estado.dev_mode = False
         return "Modo desenvolvedor desligado."
 
     if operacao in ("log", "registro", "ver log", "ultimas"):
         return ler_dev_log()
 
     return (
-        f"Modo desenvolvedor: {'ligado' if dev_mode else 'desligado'}. "
+        f"Modo desenvolvedor: {'ligado' if estado.dev_mode else 'desligado'}. "
         f"Registro em {DEV_LOG_FILE}."
     )
 
@@ -7769,8 +7762,8 @@ def tool_diagnostico():
     linhas.append(f"- modelo: {MODEL_NAME}, contexto {NUM_CTX}")
     linhas.append(f"- escuta: {WHISPER_MODEL} em {WHISPER_DEVICE}")
     linhas.append(f"- voz: {VOICE_MODEL.parent.name if VOICE_MODEL else '?'}")
-    linhas.append(f"- perfil: {perfil_atual}")
-    linhas.append(f"- áudio: {audio_backend}")
+    linhas.append(f"- perfil: {estado.perfil_atual}")
+    linhas.append(f"- áudio: {estado.audio_backend}")
     linhas.append(f"- memória longa: {'ok' if memoria else 'desligada'}")
     linhas.append(f"- agenda: {'ligada' if agenda else 'desligada'}")
     linhas.append(
@@ -8846,7 +8839,7 @@ def run_tool(name, args):
     pedidos = dict(args)
     args = ajustar_argumentos(name, args)
 
-    if dev_mode:
+    if estado.dev_mode:
         dev_log(f"ferramenta {name}({args})")
 
         if pedidos != args:
@@ -8887,7 +8880,7 @@ def run_tool(name, args):
 
     texto = str(result)[:TOOL_RESULT_MAX]
 
-    if dev_mode:
+    if estado.dev_mode:
         dev_log(
             f"  {name} levou {time.monotonic() - comecou:.2f}s e devolveu "
             f"{len(texto)} caracteres: {texto[:200]!r}"
@@ -9105,16 +9098,15 @@ def trim_history():
     Mantem o sistema mais as ultimas mensagens, sem comecar no meio de
     uma chamada de ferramenta (o Ollama rejeita um 'tool' orfao).
     """
-    global history
 
-    if len(history) <= MAX_HISTORY_MESSAGES + 1:
-        return history
+    if len(estado.history) <= MAX_HISTORY_MESSAGES + 1:
+        return estado.history
 
-    start = len(history) - MAX_HISTORY_MESSAGES
+    start = len(estado.history) - MAX_HISTORY_MESSAGES
 
     index = next(
-        (i for i in range(start, len(history))
-         if history[i].get("role") == "user"),
+        (i for i in range(start, len(estado.history))
+         if estado.history[i].get("role") == "user"),
         None,
     )
 
@@ -9122,13 +9114,13 @@ def trim_history():
         # Sem nenhuma pergunta na janela, recua ate a ultima que existir:
         # cortar aqui apagaria a conversa inteira.
         index = next(
-            (i for i in range(len(history) - 1, 0, -1)
-             if history[i].get("role") == "user"),
+            (i for i in range(len(estado.history) - 1, 0, -1)
+             if estado.history[i].get("role") == "user"),
             None,
         )
 
-    history = [history[0]] if index is None else [history[0]] + history[index:]
-    return history
+    estado.history = [estado.history[0]] if index is None else [estado.history[0]] + estado.history[index:]
+    return estado.history
 
 
 def iter_stream_json(response):
@@ -9211,7 +9203,7 @@ def run_model_round(allow_tools, opcoes=None):
 
     payload = {
         "model": MODEL_NAME,
-        "messages": history,
+        "messages": estado.history,
         "stream": True,
         # O esforço "alto" liga o raciocínio antes da resposta; os
         # outros dois mantêm a resposta direta de sempre.
@@ -9320,8 +9312,8 @@ def ask_nebell(user_text, resumo=None):
 
     interno = resumo is not None
 
-    metrics["request_started"] = time.time()
-    metrics["first_audio"] = 0.0
+    estado.metrics["request_started"] = time.time()
+    estado.metrics["first_audio"] = 0.0
 
     cancel_event.clear()
     busy_event.set()
@@ -9342,8 +9334,8 @@ def ask_nebell(user_text, resumo=None):
 
     if shortcut:
         print(f"\nNEBELL: {shortcut}")
-        history.append({"role": "user", "content": user_text})
-        history.append({"role": "assistant", "content": shortcut})
+        estado.history.append({"role": "user", "content": user_text})
+        estado.history.append({"role": "assistant", "content": shortcut})
         trim_history()
 
         if memoria is not None:
@@ -9376,10 +9368,10 @@ def ask_nebell(user_text, resumo=None):
             ) + "]"
         )
 
-    history.append({"role": "user", "content": user_text})
+    estado.history.append({"role": "user", "content": user_text})
 
     if instrucao:
-        history.append({"role": "system", "content": instrucao})
+        estado.history.append({"role": "system", "content": instrucao})
 
     trim_history()
 
@@ -9431,7 +9423,7 @@ def ask_nebell(user_text, resumo=None):
             if cancel_event.is_set():
                 # Guarda o pedaço que ele chegou a dizer, sem chamadas de
                 # ferramenta penduradas, para o histórico ficar coerente.
-                history.append({
+                estado.history.append({
                     "role": "assistant",
                     "content": (answer or "").strip()
                     + " (interrompido pelo usuário)",
@@ -9444,7 +9436,7 @@ def ask_nebell(user_text, resumo=None):
                 if calls:
                     message["tool_calls"] = calls
 
-                history.append(message)
+                estado.history.append(message)
 
             if not calls:
                 if not answer:
@@ -9470,7 +9462,7 @@ def ask_nebell(user_text, resumo=None):
                 descrever_trabalho(name)
                 ui_message("nebell", f"({O_QUE_ESTA_FAZENDO.get(name, name)})")
 
-                history.append({
+                estado.history.append({
                     "role": "tool",
                     "tool_name": name,
                     "content": run_tool(name, args),
@@ -9513,7 +9505,7 @@ def ask_nebell(user_text, resumo=None):
             wait_for_speech()
 
         resposta = next(
-            (m["content"] for m in reversed(history)
+            (m["content"] for m in reversed(estado.history)
              if m.get("role") == "assistant" and m.get("content")),
             "",
         )
@@ -10173,7 +10165,7 @@ def atualizar_estatisticas(uma_vez=False):
         if uma_vez:
             return
 
-        shutdown_event.wait(PERFIS[perfil_atual]["painel_intervalo"])
+        shutdown_event.wait(PERFIS[estado.perfil_atual]["painel_intervalo"])
 
 
 def run_hud_mode():
@@ -10458,7 +10450,7 @@ def iniciar_sentinela():
         if sentinela is None:
             sentinela = nebell_sentinela.Sentinela(
                 ao_avisar=avisar_do_nada, log=print,
-                intervalo=PERFIS[perfil_atual]["sentinela_intervalo"],
+                intervalo=PERFIS[estado.perfil_atual]["sentinela_intervalo"],
             )
 
         if not sentinela.ligada:
@@ -10692,7 +10684,7 @@ def main():
         "winsound_memory": "winsound pela memória (sem interrupção)",
         "nenhum": "nenhum: sem som",
     }
-    print(f"[Áudio] {nomes.get(detect_audio_backend(), audio_backend)}")
+    print(f"[Áudio] {nomes.get(detect_audio_backend(), estado.audio_backend)}")
 
     abrir_memoria()
     abrir_agenda()
@@ -10726,7 +10718,7 @@ def main():
     threading.Thread(target=garantir_voz, daemon=True).start()
     threading.Thread(target=vigia_ociosidade, daemon=True).start()
 
-    if SENTINELA_LIGADA and PERFIS[perfil_atual]["sentinela"]:
+    if SENTINELA_LIGADA and PERFIS[estado.perfil_atual]["sentinela"]:
         iniciar_sentinela()
 
     if ALLOW_INTERRUPT and msvcrt is not None:
