@@ -808,9 +808,6 @@ Não mostre raciocínio interno nem tags de pensamento.
 speech_queue = queue.Queue()
 audio_queue = queue.Queue(maxsize=3)
 
-voice = None
-voz_neural = None              # VozXtts ou VozKokoro quando um deles está ativo
-VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
 mic_manager = None          # nebell_audio.MicManager
 hud = None                  # nebell_hud.HudBridge
 request_queue = queue.Queue()
@@ -851,6 +848,12 @@ class Estado:
         self.arquivo_em_foco = {}
         self.documento_em_foco = {}
 
+        # Voz atual: handles Piper/neural, rotulo da HUD e ajuste do Piper.
+        self.voice = None
+        self.voz_neural = None              # VozXtts ou VozKokoro quando um deles está ativo
+        self.VOZ_ROTULO = "Piper · nebell"  # o que aparece no painel da HUD
+        self.synthesis_config = None        # ajuste de voz do Piper, montado na abertura
+
         # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
 
@@ -875,7 +878,6 @@ falas_em_curso = [0]
 contador_de_falas = threading.Lock()
 busy_event = threading.Event()      # falando ou gerando: pode ser cortado
 cancel_event = threading.Event()    # o usuario mandou parar
-synthesis_config = None        # ajuste de voz do Piper, montado na abertura
 troca_de_voz = threading.Lock()
 mic_mudo = threading.Event()        # ligado = microfone silenciado pelo usuario
 audio_backend = "winsound_memory"
@@ -1242,18 +1244,17 @@ def build_synthesis_config():
     é o caminho oficial; escrever direto no voice.config pode ser ignorado
     e os seus ajustes de voz se perdiam em silêncio.
     """
-    global synthesis_config
 
     if SynthesisConfig is not None:
         try:
-            synthesis_config = SynthesisConfig(
+            estado.synthesis_config = SynthesisConfig(
                 length_scale=VOICE_LENGTH_SCALE,
                 noise_scale=VOICE_NOISE_SCALE,
                 noise_w_scale=VOICE_NOISE_W_SCALE,
             )
-            return synthesis_config
+            return estado.synthesis_config
         except TypeError:
-            synthesis_config = None
+            estado.synthesis_config = None
 
     # Piper antigo: só resta ajustar a configuração carregada do modelo.
     for atributo, valor in (
@@ -1262,8 +1263,8 @@ def build_synthesis_config():
         ("noise_w_scale", VOICE_NOISE_W_SCALE),
         ("noise_w", VOICE_NOISE_W_SCALE),
     ):
-        if voice is not None and hasattr(voice.config, atributo):
-            setattr(voice.config, atributo, valor)
+        if estado.voice is not None and hasattr(estado.voice.config, atributo):
+            setattr(estado.voice.config, atributo, valor)
 
     return None
 
@@ -1284,16 +1285,16 @@ def synthesize_to_bytes(text):
     # O lock evita sintetizar com o modelo sendo trocado no meio.
     with troca_de_voz:
         # Voz neural (XTTS ou Kokoro) quando ativa; senão, Piper.
-        if voz_neural is not None:
-            return voz_neural.sintetizar(text)
+        if estado.voz_neural is not None:
+            return estado.voz_neural.sintetizar(text)
 
         buffer = io.BytesIO()
 
         with wave.open(buffer, "wb") as wav_file:
-            if synthesis_config is not None:
-                voice.synthesize_wav(text, wav_file, syn_config=synthesis_config)
+            if estado.synthesis_config is not None:
+                estado.voice.synthesize_wav(text, wav_file, syn_config=estado.synthesis_config)
             else:
-                voice.synthesize_wav(text, wav_file)
+                estado.voice.synthesize_wav(text, wav_file)
 
     data = buffer.getvalue()
     return data, wav_duration(data)
@@ -2011,12 +2012,12 @@ def voice_barge_in_watcher():
 
 def carregar_voz(caminho):
     """Carrega um modelo de voz e refaz o ajuste de sintese."""
-    global voice, VOICE_MODEL, VOZ_ROTULO
+    global VOICE_MODEL
 
     nova = PiperVoice.load(str(caminho))
-    voice = nova
+    estado.voice = nova
     VOICE_MODEL = Path(caminho)
-    VOZ_ROTULO = f"Piper · {VOICE_MODEL.parent.name}"
+    estado.VOZ_ROTULO = f"Piper · {VOICE_MODEL.parent.name}"
     build_synthesis_config()
     _filler_cache.clear()
     return nova
@@ -2032,7 +2033,6 @@ def preparar_xtts():
 
     Devolve a VozXtts pronta, ou None — e aí cai no Kokoro. Nunca estoura.
     """
-    global VOZ_ROTULO
 
     if not (USAR_XTTS and nebell_xtts is not None
             and nebell_xtts.disponivel(VOICES_DIR)):
@@ -2043,7 +2043,7 @@ def preparar_xtts():
         voz = nebell_xtts.VozXtts(
             VOICES_DIR, falante=XTTS_FALANTE, usar_gpu=XTTS_GPU, log=print
         )
-        VOZ_ROTULO = f"XTTS · {voz.falante}"
+        estado.VOZ_ROTULO = f"XTTS · {voz.falante}"
         return voz
 
     except Exception as exc:
@@ -2085,7 +2085,6 @@ def preparar_kokoro():
     Devolve a VozKokoro pronta, ou None quando não dá — e aí o NEBELL
     segue com o Piper. Nunca estoura: qualquer erro vira None.
     """
-    global VOZ_ROTULO
 
     if not USAR_KOKORO or nebell_kokoro is None:
         return None
@@ -2114,7 +2113,7 @@ def preparar_kokoro():
         voz = nebell_kokoro.VozKokoro(
             VOICES_DIR, voz=KOKORO_VOZ, velocidade=KOKORO_VELOCIDADE, log=print
         )
-        VOZ_ROTULO = f"Kokoro · {voz.voz}"
+        estado.VOZ_ROTULO = f"Kokoro · {voz.voz}"
         return voz
 
     except Exception as exc:
@@ -2217,10 +2216,10 @@ def vozes_disponiveis():
 
 def _chave_voz_atual():
     """Qual chave de voz corresponde ao que esta tocando agora."""
-    v = voz_neural
+    v = estado.voz_neural
 
     if v is None:
-        return "piper" if voice is not None else ""
+        return "piper" if estado.voice is not None else ""
 
     if nebell_edge is not None:
         if isinstance(v, nebell_edge.VozHibrida):
@@ -2271,13 +2270,13 @@ def _salvar_voz_no_config(chave):
 
 def trocar_voz(chave):
     """Troca a voz em tempo real, a pedido da janela. Devolve (ok, msg)."""
-    global voz_neural, VOZ_ROTULO, voice, VOICE_MODEL
+    global VOICE_MODEL
 
     chave = (chave or "").strip()
     modo, _, arg = chave.partition(":")
 
     if chave and chave == _chave_voz_atual():
-        return True, f"Já estou falando com {VOZ_ROTULO}."
+        return True, f"Já estou falando com {estado.VOZ_ROTULO}."
 
     nova = None
     novo_piper = None
@@ -2319,13 +2318,13 @@ def trocar_voz(chave):
 
     with troca_de_voz:
         if modo == "piper":
-            voice = novo_piper
+            estado.voice = novo_piper
             VOICE_MODEL = novo_modelo
             build_synthesis_config()
-            voz_neural = None
+            estado.voz_neural = None
         else:
-            voz_neural = nova
-        VOZ_ROTULO = rotulo
+            estado.voz_neural = nova
+        estado.VOZ_ROTULO = rotulo
         _filler_cache.clear()          # o cache estava na voz antiga
 
     _salvar_voz_no_config(chave)
@@ -2352,7 +2351,7 @@ def garantir_voz():
     # Com uma voz neural ativa, não faz sentido baixar a voz do Piper em
     # segundo plano: ela só serviria de reserva, e o download fica para
     # quando (e se) a voz neural faltar.
-    if voz_neural is not None:
+    if estado.voz_neural is not None:
         return
 
     if not (AUTO_DOWNLOAD_VOICE and nebell_voz is not None):
@@ -9897,7 +9896,7 @@ def hud_ready():
         on_microphone_change(mic_manager)
 
     hud.set_esforco_nivel(esforco_atual[0])
-    hud.set_stats(voice=VOZ_ROTULO)
+    hud.set_stats(voice=estado.VOZ_ROTULO)
 
     # Seletor de voz (só as vozes que funcionam aqui) e estado do mudo.
     try:
@@ -10159,9 +10158,9 @@ def atualizar_estatisticas(uma_vez=False):
             # Rótulo da voz ao vivo: a híbrida diz se está online ou
             # offline agora. Corrige também o display que às vezes ficava
             # preso em "Piper".
-            if voz_neural is not None and hasattr(voz_neural, "rotulo"):
+            if estado.voz_neural is not None and hasattr(estado.voz_neural, "rotulo"):
                 try:
-                    dados["voice"] = voz_neural.rotulo()
+                    dados["voice"] = estado.voz_neural.rotulo()
                 except Exception:
                     pass
 
@@ -10588,7 +10587,7 @@ def encerrar(threads=()):
 
 
 def main():
-    global voice, VOICE_MODEL, voz_neural, VOZ_ROTULO
+    global VOICE_MODEL
     global USAR_TESSERACT, USAR_VISAO_TELA
 
     # Opções de arranque (passadas pelo .bat ou na linha de comando).
@@ -10625,25 +10624,25 @@ def main():
     #      tem, cai no Kokoro quando não tem)
     #   -> Kokoro sozinho
     #   -> Piper (última reserva).
-    voz_neural = preparar_xtts()
+    estado.voz_neural = preparar_xtts()
 
-    if voz_neural is None:
+    if estado.voz_neural is None:
         offline = preparar_kokoro()      # VozKokoro (offline) ou None
         online = preparar_edge()         # VozEdge (online) ou None
 
         if online is not None and offline is not None:
-            voz_neural = nebell_edge.VozHibrida(online, offline, log=print)
+            estado.voz_neural = nebell_edge.VozHibrida(online, offline, log=print)
             nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
-            VOZ_ROTULO = f"Microsoft {nome} + Kokoro"
+            estado.VOZ_ROTULO = f"Microsoft {nome} + Kokoro"
         elif offline is not None:
-            voz_neural = offline         # VOZ_ROTULO já = "Kokoro · pf_dora"
+            estado.voz_neural = offline         # VOZ_ROTULO já = "Kokoro · pf_dora"
         elif online is not None:
-            voz_neural = online
+            estado.voz_neural = online
             nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
-            VOZ_ROTULO = f"Microsoft {nome}"
+            estado.VOZ_ROTULO = f"Microsoft {nome}"
 
-    if voz_neural is not None:
-        print(f"Voz: {VOZ_ROTULO}.")
+    if estado.voz_neural is not None:
+        print(f"Voz: {estado.VOZ_ROTULO}.")
     else:
         if PiperVoice is None:
             print("Piper não instalado (pip install piper-tts).")

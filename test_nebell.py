@@ -131,7 +131,7 @@ def setUpModule():
     J.WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
 
     fake_voice = FakeVoice()
-    J.voice = fake_voice
+    J.estado.voice = fake_voice
     J.METRICS = False
     J.audio_backend = "nenhum"      # sem placa de som nos testes
 
@@ -265,7 +265,7 @@ class NebellTest(unittest.TestCase):
         J.estado.first_chunk_pending = True
         J.estado.tools_supported = True
         J.estado.interaction_mode = "text"
-        J.synthesis_config = None
+        J.estado.synthesis_config = None
         J.cancel_event.clear()
         J.busy_event.clear()
         # Uma sessão resume uma vez só; cada teste é uma sessão nova.
@@ -2333,12 +2333,12 @@ class TestConfiguracaoDaVoz(NebellTest):
         self.assertEqual(config.noise_w_scale, J.VOICE_NOISE_W_SCALE)
 
     def test_piper_antigo_cai_para_o_voice_config(self):
-        J.voice.config.length_scale = 0.0
+        J.estado.voice.config.length_scale = 0.0
 
         with mock.patch.object(J, "SynthesisConfig", None):
             self.assertIsNone(J.build_synthesis_config())
 
-        self.assertEqual(J.voice.config.length_scale, J.VOICE_LENGTH_SCALE)
+        self.assertEqual(J.estado.voice.config.length_scale, J.VOICE_LENGTH_SCALE)
 
     def test_config_e_passada_na_sintese(self):
         marcador = object()
@@ -2351,12 +2351,12 @@ class TestConfiguracaoDaVoz(NebellTest):
             wav_file.setframerate(22050)
             wav_file.writeframes(b"\x00\x00" * 10)
 
-        J.synthesis_config = marcador
+        J.estado.synthesis_config = marcador
         try:
-            with mock.patch.object(J.voice, "synthesize_wav", espiao):
+            with mock.patch.object(J.estado.voice, "synthesize_wav", espiao):
                 J.synthesize_to_bytes("teste")
         finally:
-            J.synthesis_config = None
+            J.estado.synthesis_config = None
 
         self.assertIs(recebido["syn_config"], marcador)
 
