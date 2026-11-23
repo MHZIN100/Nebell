@@ -946,6 +946,38 @@ class TestHistorico(MemoriaTest):
         self.assertFalse(self.mem.ativar_conversa(999999))
         self.assertEqual(self.mem.conversa_id, atual)   # ativa intacta
 
+    def _titulo(self, cid):
+        linhas = self.mem.consultar(
+            "SELECT titulo FROM conversas WHERE id = ?", (cid,)
+        )
+        return linhas[0]["titulo"]
+
+    def test_titulo_sai_da_primeira_mensagem_do_usuario(self):
+        cid = self._conversa(("user", "Como ajusto o PID do carrinho?"))
+        self.assertEqual(self._titulo(cid), "Como ajusto o PID do carrinho?")
+
+    def test_segunda_mensagem_nao_muda_o_titulo(self):
+        cid = self._conversa(
+            ("user", "primeira pergunta"),
+            ("user", "segunda, bem diferente"),
+        )
+        self.assertEqual(self._titulo(cid), "primeira pergunta")
+
+    def test_resposta_da_nebell_nao_vira_titulo(self):
+        self.mem.iniciar_conversa("voz")
+        cid = self.mem.conversa_id
+        self.mem.registrar_mensagem("assistant", "Olá, senhor")
+        self.assertIn(self._titulo(cid), (None, ""))   # ainda sem título
+        self.mem.registrar_mensagem("user", "oi nebell")
+        self.assertEqual(self._titulo(cid), "oi nebell")
+
+    def test_titulo_longo_e_cortado(self):
+        longa = "palavra " * 20
+        cid = self._conversa(("user", longa))
+        t = self._titulo(cid)
+        self.assertTrue(t.endswith("…"))
+        self.assertLessEqual(len(t), 49)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

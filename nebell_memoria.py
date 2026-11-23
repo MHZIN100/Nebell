@@ -309,7 +309,25 @@ class Memoria:
             "UPDATE conversas SET total = total + 1 WHERE id = ?",
             (self.conversa_id,),
         )
+
+        # Nome da conversa a partir da PRIMEIRA fala do usuario: o WHERE so
+        # pega quando ainda nao ha titulo, entao so a primeira mensagem o
+        # define; as seguintes nao mexem. Um resumo melhor pode vir depois.
+        if papel == "user":
+            self.executar(
+                "UPDATE conversas SET titulo = ? WHERE id = ? "
+                "AND (titulo IS NULL OR titulo = '')",
+                (self._titulo_curto(conteudo), self.conversa_id),
+            )
+
         return True
+
+    @staticmethod
+    def _titulo_curto(texto, limite=48):
+        """Um titulo enxuto a partir de uma fala: espacos colapsados e
+        cortado com reticencias se for longo."""
+        t = " ".join((texto or "").split())
+        return (t[:limite].rstrip() + "…") if len(t) > limite else t
 
     def buscar_mensagens(self, texto, limite=6, incluir_atual=False):
         """Procura no que já foi dito, em todas as conversas."""

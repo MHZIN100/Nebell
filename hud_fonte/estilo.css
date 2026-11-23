@@ -132,7 +132,12 @@ select:focus{border-color:var(--acc)}
  box-shadow:0 10px 30px rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:30}
 .hist-pop[hidden]{display:none}
 .hist-cab{font:500 10px Orbitron,sans-serif;letter-spacing:.25em;color:var(--acc);padding:10px 12px;border-bottom:1px solid var(--line)}
-.hist-lista{overflow:auto;padding:6px}
+.hist-nova{display:flex;align-items:center;gap:8px;width:calc(100% - 12px);margin:6px;padding:8px 10px;
+ background:rgba(0,229,255,.08);border:1px solid var(--acc);color:var(--acc);
+ font:500 11px Orbitron,sans-serif;letter-spacing:.12em;cursor:pointer}
+.hist-nova:hover{background:rgba(0,229,255,.16)}
+.hist-mais{font-size:15px;line-height:1}
+.hist-lista{overflow:auto;padding:6px;border-top:1px solid var(--line)}
 .hist-item{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;border-left:2px solid var(--line);
  padding:8px 10px;margin:2px 0;cursor:pointer;color:var(--text);font:inherit;letter-spacing:normal}
 .hist-item:hover{border-color:var(--acc);background:rgba(255,255,255,.04)}
@@ -155,3 +160,27 @@ select:focus{border-color:var(--acc)}
 #demo{display:flex;gap:6px;flex-wrap:wrap}#demo button{padding:9px 10px;font-size:10px}
 @media (max-width:860px){body{overflow:auto}.app{height:auto;min-height:100%}main{grid-template-columns:1fr}.hudbox{order:-1}#hud{flex:none;aspect-ratio:1;max-height:40vh}.panel{min-height:200px}#log{max-height:360px}footer{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+/* Fundo galactico: duas camadas de estrelas, atras de tudo (.app e
+   z-index:1). CSS puro, sem canvas -- nao disputa com as particulas.
+   Cintilar lento, desligado em prefers-reduced-motion. */
+.estrelas{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.estrelas::before,.estrelas::after{content:"";position:absolute;inset:0;background-repeat:repeat}
+.estrelas::before{
+ background-image:
+  radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.85), transparent),
+  radial-gradient(1px 1px at 34% 72%, rgba(185,222,255,.75), transparent),
+  radial-gradient(1px 1px at 58% 40%, rgba(255,255,255,.65), transparent),
+  radial-gradient(1px 1px at 81% 12%, rgba(205,232,255,.75), transparent),
+  radial-gradient(1px 1px at 91% 83%, rgba(255,255,255,.55), transparent),
+  radial-gradient(1px 1px at 47% 93%, rgba(255,255,255,.6), transparent),
+  radial-gradient(1px 1px at 68% 26%, rgba(230,240,255,.6), transparent);
+ background-size:270px 270px;animation:cintilar 7s ease-in-out infinite}
+.estrelas::after{
+ background-image:
+  radial-gradient(1.5px 1.5px at 23% 36%, rgba(255,255,255,.55), transparent),
+  radial-gradient(1.5px 1.5px at 72% 62%, rgba(150,200,255,.5), transparent),
+  radial-gradient(2px 2px at 50% 14%, rgba(255,255,255,.5), transparent),
+  radial-gradient(1.5px 1.5px at 88% 48%, rgba(190,215,255,.5), transparent);
+ background-size:440px 440px;animation:cintilar 12s ease-in-out infinite reverse}
+@keyframes cintilar{0%,100%{opacity:.45}50%{opacity:.9}}
+@media (prefers-reduced-motion:reduce){.estrelas::before,.estrelas::after{animation:none;opacity:.7}}

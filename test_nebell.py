@@ -916,6 +916,25 @@ class TestHistoricoDeConversas(NebellTest):
         with mock.patch.object(J.estado, "memoria", None):
             self.assertFalse(J.carregar_conversa(1))
 
+    def test_nova_conversa_comeca_do_zero(self):
+        antiga = self._conversa(("user", "conversa antiga"))
+        J.ask_nebell  # garante import
+        J.estado.history = [{"role": "system", "content": "x"},
+                            {"role": "user", "content": "lixo"}]
+
+        J.nova_conversa()
+
+        # virou outra conversa, com history so do system prompt
+        self.assertNotEqual(J.estado.memoria.conversa_id, antiga)
+        self.assertEqual([m["role"] for m in J.estado.history], ["system"])
+        # a antiga continua no historico
+        self.assertTrue(any(c["id"] == antiga for c in J.listar_conversas()))
+
+    def test_nova_conversa_sem_memoria_nao_quebra(self):
+        with mock.patch.object(J.estado, "memoria", None):
+            self.assertTrue(J.nova_conversa())
+            self.assertEqual([m["role"] for m in J.estado.history], ["system"])
+
     def test_listar_mostra_os_numeros(self):
         J.tool_lembrar("algo")
         self.assertIn("conversas", J.tool_listar_memoria())

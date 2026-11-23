@@ -227,6 +227,8 @@ $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()}
 // Histórico: abre/fecha o painel; fora dele, fecha.
 $('#hist').addEventListener('click',e=>{e.stopPropagation();const pop=$('#hist-pop');abrirHist(!!(pop&&pop.hidden))});
 document.addEventListener('click',e=>{if(!e.target.closest('.hist-wrap'))abrirHist(false)});
+// Nova conversa: limpa a janela na hora e pede ao Python para comecar do zero.
+$('#hist-nova').addEventListener('click',()=>{const b=bridge();if(b&&b.nova_conversa)b.nova_conversa();limparLog();abrirHist(false)});
 // O seletor e o NATIVO, do lado do Python: o <input type=file> do HTML
 // nao entrega o caminho no disco, e sem caminho o NEBELL nao consegue
 // editar o arquivo depois.

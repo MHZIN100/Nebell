@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body data-state="idle" data-bigbang="__BIGBANG__">
+<div class="estrelas" aria-hidden="true"></div>
 <div class="app">
  <header><h1>N.E.B.E.L.L.</h1><div class="clock"><b id="clk">--:--:--</b><span id="dt"></span></div></header>
  <main>
@@ -48,6 +49,9 @@
    </button>
    <div id="hist-pop" class="hist-pop" hidden>
     <div class="hist-cab">HISTÓRICO</div>
+    <button id="hist-nova" type="button" class="hist-nova">
+     <span class="hist-mais">+</span> Nova conversa
+    </button>
     <div id="hist-lista" class="hist-lista"></div>
    </div>
   </div>

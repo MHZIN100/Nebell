@@ -662,7 +662,10 @@
       t += dt;
 
       // Big Bang: avanca a expansao (~0,9 s) e suaviza com smoothstep.
-      if (entrada < 1) entrada = Math.min(1, entrada + dt / 0.9);
+      // So avanca com a janela VISIVEL -- senao a animacao rodaria antes
+      // de a janela aparecer e a pessoa a perderia.
+      if (entrada < 1 && !(global.document && global.document.hidden))
+        entrada = Math.min(1, entrada + dt / 0.9);
       const ent = entrada < 1 ? entrada * entrada * (3 - 2 * entrada) : 1;
 
       const cfgDest = ESTADOS[destino] || ESTADOS.espera;

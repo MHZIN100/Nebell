@@ -3801,12 +3801,36 @@ def carregar_conversa(id_conversa):
     return True
 
 
+def nova_conversa():
+    """
+    Comeca uma conversa do zero: encerra a atual (marca o fim), abre uma
+    nova no banco, limpa o `history` (so o system prompt) e esvazia a
+    janela. A conversa anterior continua no historico, com seu titulo.
+    """
+    if estado.memoria is not None:
+        estado.memoria.encerrar_conversa()
+        estado.memoria.iniciar_conversa(modo="hud" if USE_HUD else "console")
+
+    reset_history()
+
+    if estado.hud is not None:
+        estado.hud.limpar_conversa()
+
+    return True
+
+
 def hud_abrir_conversa(id_conversa):
     """A janela pediu para continuar uma conversa antiga do historico."""
     if carregar_conversa(id_conversa):
         ui_state("idle")
     elif estado.hud is not None:
         estado.hud.add_message("nebell", "Não consegui abrir essa conversa, senhor.")
+
+
+def hud_nova_conversa():
+    """A janela pediu uma conversa nova (botao do painel de historico)."""
+    nova_conversa()
+    ui_state("idle")
 
 
 # --- ferramentas de memoria ---------------------------------
@@ -10183,6 +10207,7 @@ def run_hud_mode():
     estado.hud.on_set_voz = hud_set_voz
     estado.hud.on_set_mudo = hud_set_mudo
     estado.hud.on_abrir_conversa = hud_abrir_conversa
+    estado.hud.on_nova_conversa = hud_nova_conversa
     estado.hud.obter_conversas = listar_conversas
     estado.hud.on_ready = hud_ready
 

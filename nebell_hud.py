@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 20
+HUD_VERSAO = 21
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -95,6 +95,7 @@ class HudBridge:
         self.on_set_voz = None
         self.on_set_mudo = None
         self.on_abrir_conversa = None   # HUD->Python: continuar uma conversa
+        self.on_nova_conversa = None    # HUD->Python: comecar uma conversa nova
         self.obter_conversas = None     # HUD->Python: lista para o historico
 
         self._pending = []
@@ -185,6 +186,15 @@ class HudBridge:
             if bridge.on_abrir_conversa:
                 threading.Thread(
                     target=bridge.on_abrir_conversa, args=(cid,), daemon=True
+                ).start()
+
+            return True
+
+        def nova_conversa(self):
+            """A pagina pediu para comecar uma conversa nova."""
+            if self._bridge.on_nova_conversa:
+                threading.Thread(
+                    target=self._bridge.on_nova_conversa, daemon=True
                 ).start()
 
             return True
