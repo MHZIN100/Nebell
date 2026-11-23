@@ -95,6 +95,11 @@ except Exception:
     nebell_memoria = None
 
 try:
+    import nebell_esp
+except Exception:
+    nebell_esp = None
+
+try:
     import nebell_voz
 except Exception:
     nebell_voz = None
@@ -259,6 +264,8 @@ _CONFIG_CAMPOS = {
     "ociosidade_min": ("OCIOSIDADE_MIN", "num"),
     "perfil": ("PERFIL_PADRAO", "txt"),
     "big_bang": ("BIG_BANG", "bool"),
+    "esp_ligado": ("ESP_LIGADO", "bool"),
+    "esp_porta": ("ESP_PORTA", "num"),
 }
 
 
@@ -670,6 +677,13 @@ OCIOSIDADE_MIN = 10
 # sistema também desliga, por conta da página.
 BIG_BANG = True
 
+# Placa ESP32 com tela (a CYD) como monitor remoto da NEBELL. Desligada
+# por padrão (abre uma porta de rede); ligue no nebell_config.json com
+# "esp_ligado": true quando for usar a placa. A porta tem de bater com a
+# do sketch da placa (e com a regra do firewall).
+ESP_LIGADO = False
+ESP_PORTA = 8765
+
 # Agora sim, com TODAS as constantes de config já definidas, aplica o
 # nebell_config.json por cima dos padrões (sem risco de ser sobrescrito).
 _CONFIG_APLICADA = _aplicar_config()
@@ -874,6 +888,9 @@ class Estado:
 
         # Memoria de longo prazo: o banco (SQLite) com conversas, fatos e projetos.
         self.memoria = None             # nebell_memoria.Memoria
+
+        # Ponte para a placa ESP32 com tela (monitor remoto), se ligada.
+        self.enviador_esp = None        # nebell_esp.EnviadorESP
 
         # <<ESTADO_FIELDS>>  (as proximas fatias entram acima desta linha)
 
@@ -1772,9 +1789,12 @@ def wait_for_speech():
 
 
 def ui_state(situacao):
-    """Reflete na HUD o que o NEBELL esta fazendo agora."""
+    """Reflete na HUD o que o NEBELL esta fazendo agora, e avisa a placa
+    ESP32 (se ligada) para ela mostrar o mesmo estado de longe."""
     if estado.hud is not None:
         estado.hud.set_state(situacao)
+    if estado.enviador_esp is not None:
+        estado.enviador_esp.enviar_estado(situacao)
 
 
 def ui_message(papel, texto):
@@ -10463,6 +10483,24 @@ def abrir_backup():
         return False
 
 
+def iniciar_esp():
+    """Liga a ponte para a placa ESP32 (monitor remoto), se configurada."""
+
+    if not ESP_LIGADO or nebell_esp is None:
+        return False
+
+    try:
+        enviador = nebell_esp.EnviadorESP(porta=int(ESP_PORTA), log=print)
+        if enviador.iniciar():
+            estado.enviador_esp = enviador
+            return True
+    except Exception as exc:
+        print(f"[ESP] Não consegui ligar: {exc}")
+
+    estado.enviador_esp = None
+    return False
+
+
 def iniciar_sentinela():
     """Liga a vigilancia do hardware."""
 
@@ -10509,6 +10547,12 @@ def fechar_extras():
     if estado.backup is not None:
         try:
             estado.backup.parar()
+        except Exception:
+            pass
+
+    if estado.enviador_esp is not None:
+        try:
+            estado.enviador_esp.parar()
         except Exception:
             pass
 
@@ -10712,6 +10756,7 @@ def main():
     abrir_memoria()
     abrir_agenda()
     abrir_backup()
+    iniciar_esp()
     reset_history()
 
     synth_thread = threading.Thread(target=synth_worker, daemon=True)
