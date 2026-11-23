@@ -496,16 +496,39 @@
     // a HUD. Nao mexe na fisica -- so na PROJECAO: `entrada` multiplica a
     // posicao na tela, entao em 0 tudo se projeta no centro (um ponto) e
     // em 1 fica no lugar normal. A fisica roda igual por baixo; a nuvem
-    // ja esta formada quando a expansao termina. Desligado em
-    // prefers-reduced-motion e por config (cfg.bigBang === false).
-    let entrada = (cfg.bigBang !== false && !devagar) ? 0 : 1;
+    // ja esta formada quando a expansao termina. So por config
+    // (cfg.bigBang === false) ela fica desligada -- e uma animacao curta,
+    // de proposito, entao nao segue o prefers-reduced-motion.
+    let entrada = (cfg.bigBang !== false) ? 0 : 1;
 
-    function pularAbertura() { entrada = 1; }
+    // A expansao so comeca quando a JANELA aparece de verdade (ganha foco
+    // ou fica visivel). Sem isso, ela rodaria enquanto a janela ainda
+    // esta sendo aberta e a pessoa perderia os ~0,9 s. Rede de seguranca:
+    // se nenhum evento vier, comeca sozinha depois de 5 s.
+    let comecouAbertura = entrada >= 1;
+
+    function dispararAbertura() { comecouAbertura = true; }
+    function pularAbertura() { entrada = 1; comecouAbertura = true; }
 
     if (entrada < 1) {
-      // Qualquer tecla ou clique pula a abertura.
       global.addEventListener("keydown", pularAbertura, { once: true });
       global.addEventListener("pointerdown", pularAbertura, { once: true });
+      // Caso normal: a janela ja aparece antes de a pagina carregar,
+      // entao se ja esta visivel, comeca agora.
+      if (!global.document || global.document.visibilityState === "visible") {
+        dispararAbertura();
+      }
+      // Reserva, para quando a pagina carrega escondida e aparece depois.
+      global.addEventListener("focus", dispararAbertura, { once: true });
+      if (global.document) {
+        global.document.addEventListener("visibilitychange", function ov() {
+          if (!global.document.hidden) {
+            dispararAbertura();
+            global.document.removeEventListener("visibilitychange", ov);
+          }
+        });
+      }
+      global.setTimeout(dispararAbertura, 5000);
     }
 
     // --- tela ---
@@ -662,9 +685,8 @@
       t += dt;
 
       // Big Bang: avanca a expansao (~0,9 s) e suaviza com smoothstep.
-      // So avanca com a janela VISIVEL -- senao a animacao rodaria antes
-      // de a janela aparecer e a pessoa a perderia.
-      if (entrada < 1 && !(global.document && global.document.hidden))
+      // So comeca quando a janela aparece (comecouAbertura).
+      if (entrada < 1 && comecouAbertura)
         entrada = Math.min(1, entrada + dt / 0.9);
       const ent = entrada < 1 ? entrada * entrada * (3 - 2 * entrada) : 1;
 
