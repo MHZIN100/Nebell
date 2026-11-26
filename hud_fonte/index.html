@@ -37,7 +37,14 @@
    </div>
   </section>
   <section class="panel conversa"><h2>Conversa</h2><div id="log"></div></section>
-  <aside class="panel hudbox"><canvas id="hud"></canvas><div id="state">EM ESPERA</div><div id="sub">Clique no microfone ou digite</div><div id="work"></div></aside>
+  <aside class="panel hudbox">
+   <div class="nucleo"><canvas id="hud"></canvas></div>
+   <div class="status">
+    <div class="status-linha"><span class="viva" aria-hidden="true"></span><div id="state">EM ESPERA</div></div>
+    <div id="sub">Clique no microfone ou digite</div>
+    <div id="work"></div>
+   </div>
+  </aside>
  </main>
  <footer>
   <div class="in"><span>&gt;</span><input id="txt" placeholder="Escreva uma mensagem…" autocomplete="off"></div>
