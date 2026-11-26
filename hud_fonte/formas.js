@@ -389,6 +389,7 @@
     ouvindo:    { forma: "ondas",      rotulo: "OUVINDO",         diz: "pode falar",                  matiz: -0.10, ruido: 0.9, pressa: 1.15, brilho: 1.12 },
     pensando:   { forma: "no",         rotulo: "PENSANDO",        diz: "montando a resposta",         matiz: 0.16,  ruido: 1.7, pressa: 2.00, brilho: 1.08 },
     falando:    { forma: "onda",       rotulo: "FALANDO",         diz: "respondendo",                 matiz: 0.02,  ruido: 1.0, pressa: 1.35, brilho: 1.22 },
+    trocando:   { forma: "ampulheta",  rotulo: "TROCANDO",        diz: "preparando o modelo",         matiz: -0.16, ruido: 0.7, pressa: 1.1,  brilho: 1.05 },
 
     internet:   { forma: "rede",       rotulo: "NA INTERNET",     diz: "pesquisando, lendo página, clima, cotação", matiz: -0.16, ruido: 1.1, pressa: 1.5, brilho: 1.05 },
     documento:  { forma: "camadas",    rotulo: "NO DOCUMENTO",    diz: "resumindo ou procurando no documento",      matiz: -0.05, ruido: 0.7, pressa: 1.0, brilho: 1.0 },

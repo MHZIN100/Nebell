@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 29
+HUD_VERSAO = 30
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -95,6 +95,7 @@ class HudBridge:
         self.on_set_voz = None
         self.on_escutar = None          # HUD->Python: clique no microfone (falar)
         self.on_salvar = None           # HUD->Python: baixar um bloco de código
+        self.on_set_modelo = None       # HUD->Python: escolher o modelo (auto/especialista)
         self.on_abrir_conversa = None   # HUD->Python: continuar uma conversa
         self.on_nova_conversa = None    # HUD->Python: comecar uma conversa nova
         self.obter_conversas = None     # HUD->Python: lista para o historico
@@ -177,6 +178,18 @@ class HudBridge:
                     target=bridge.on_salvar,
                     args=(str(nome), str(texto)),
                     daemon=True,
+                ).start()
+
+            return True
+
+        def set_modelo(self, valor):
+            """A caixa de modelo da pagina: 'auto' ou a chave de um
+            especialista (geral / codigo)."""
+            bridge = self._bridge
+
+            if bridge.on_set_modelo:
+                threading.Thread(
+                    target=bridge.on_set_modelo, args=(str(valor),), daemon=True
                 ).start()
 
             return True
@@ -570,6 +583,10 @@ class HudBridge:
     def mostrar_escutando(self, ligado):
         """Reflete na janela se o microfone esta aberto ouvindo agora."""
         self.call("setEscutando", bool(ligado))
+
+    def set_modelo_atual(self, valor):
+        """Reflete na caixa de modelo o que está ativo ('auto'/'geral'/'codigo')."""
+        self.call("setModeloSel", str(valor))
 
     def set_conversas(self, lista):
         """Entrega a lista de conversas antigas ao painel de historico."""

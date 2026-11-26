@@ -271,6 +271,8 @@ _CONFIG_CAMPOS = {
     "big_bang": ("BIG_BANG", "bool"),
     "esp_ligado": ("ESP_LIGADO", "bool"),
     "esp_porta": ("ESP_PORTA", "num"),
+    "modelo_codigo": ("MODELO_CODIGO", "txt"),
+    "modelo_auto": ("MODELO_AUTO", "bool"),
 }
 
 
@@ -379,6 +381,21 @@ OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags"
 OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_PS_URL = "http://127.0.0.1:11434/api/ps"
 MODEL_NAME = "qwen3.5:4b"
+
+# ---- modelos especialistas (troca sob demanda) ------------------
+# A ideia: em maquina fraca (8 GB), em vez de UM modelo grande "pra tudo",
+# usar modelos pequenos BONS em coisas especificas e trocar um pelo outro
+# conforme a tarefa. Nunca dois ao mesmo tempo (nao cabe em 8 GB): troca =
+# descarrega o atual e carrega o proximo (uns segundos, com aviso e a
+# animacao de "trocando" na nuvem).
+#
+# 'geral' e sempre o MODEL_NAME acima. Os outros ficam vazios por padrao
+# (nada muda) ate voce baixar um modelo no Ollama (ex.: ollama pull
+# qwen2.5-coder:3b) e apontar aqui ou no nebell_config.json.
+MODELO_CODIGO = ""      # ex.: "qwen2.5-coder:3b"; vazio = usa o geral
+# Escolha do modelo: False = manual (voce escolhe na janela); True = a
+# NEBELL escolhe pela tarefa (codigo -> modelo de codigo).
+MODELO_AUTO = False
 
 # ---- o que fazer com a maquina ao sair ---------------------
 # O Ollama guarda o modelo na memoria da placa por KEEP_ALIVE depois da
@@ -861,6 +878,10 @@ class Estado:
         self.location_info = {}
         self.location_fetched_at = 0.0
         self.location_errors = []
+        # Modelo ativo agora: None = o geral (MODEL_NAME), que é o padrão.
+        # Só muda quando a pessoa troca na janela ou o automático decide.
+        self.modelo_atual = None
+        self.dominio_atual = "geral"
         # Turno atual: modo, flags de geracao e ferramentas da vez.
         self.interaction_mode = "text"
         self.first_chunk_pending = True
@@ -2635,6 +2656,99 @@ def descarregar_modelo(modelo=None, timeout=10):
         time.sleep(0.4)
 
     return False, f"Pedi para soltar {alvo}, mas ele ainda aparece carregado."
+
+
+# ============================================================
+# MODELOS ESPECIALISTAS — troca sob demanda (um de cada vez)
+# ============================================================
+
+def modelo_em_uso():
+    """O modelo ativo agora. Sem troca, é o geral (MODEL_NAME) — lido ao
+    vivo, para os testes que trocam MODEL_NAME continuarem valendo."""
+    return estado.modelo_atual or MODEL_NAME
+
+
+def modelo_do_dominio(dominio):
+    """O nome do modelo para um domínio. Se o especialista não está
+    configurado, cai no geral (nada quebra)."""
+    if dominio == "codigo" and MODELO_CODIGO.strip():
+        return MODELO_CODIGO.strip()
+    return MODEL_NAME
+
+
+# Heurística leve (sem gastar RAM com um classificador): a mensagem
+# parece um pedido de programação?
+ROTA_CODIGO_RE = re.compile(
+    r"```|\b(c[óo]digo|programa[r]?|script|fun[cç][ãa]o|classe|m[ée]todo|"
+    r"bug|erro|exce[cç][ãa]o|compil|depura|refatora|algoritmo|regex|api|"
+    r"json|sql|query|python|javascript|typescript|\bjava\b|c\+\+|c#|rust|"
+    r"kotlin|swift|php|ruby|html|css|react|node|django|flask|docker|\bgit\b|"
+    r"terminal|shell|bash|powershell|traceback|stack trace)\b",
+    re.I,
+)
+
+
+def escolher_dominio(texto):
+    """Decide o domínio da mensagem (por enquanto: código ou geral)."""
+    if texto and ROTA_CODIGO_RE.search(texto):
+        return "codigo"
+    return "geral"
+
+
+def precarregar_modelo(nome):
+    """Pede ao Ollama para carregar o modelo agora (aquece), para o atraso
+    da troca acontecer durante a animação de 'trocando'. Nunca levanta."""
+    try:
+        session.post(
+            OLLAMA_GENERATE_URL,
+            json={"model": nome, "prompt": "", "keep_alive": KEEP_ALIVE},
+            timeout=60,
+        )
+    except Exception:
+        nebell_log and nebell_log.engolido("precarregar modelo")
+
+
+def trocar_para_dominio(dominio):
+    """
+    Troca o modelo ativo para o do domínio — um de cada vez, porque em 8 GB
+    não cabe dois. Avisa, mostra a nuvem 'trocando', descarrega o atual e
+    pré-carrega o novo. Se o alvo já é o atual, não faz nada (sem atraso).
+    """
+    alvo = modelo_do_dominio(dominio)
+    estado.dominio_atual = dominio
+
+    if alvo == modelo_em_uso():
+        return
+
+    ui_state("trocando")
+    nome = "código" if dominio == "codigo" else "conversa"
+    ui_message("nebell", f"Um momento, senhor: preparando o modelo de {nome}.")
+
+    try:
+        descarregar_modelo(modelo_em_uso())
+    except Exception:
+        nebell_log and nebell_log.engolido("troca: descarregar atual")
+
+    precarregar_modelo(alvo)
+    estado.modelo_atual = alvo
+    print(f"\n[Modelo] Agora usando {alvo} ({dominio}).")
+
+    try:
+        atualizar_estatisticas(uma_vez=True)   # o painel reflete o modelo novo
+    except Exception:
+        nebell_log and nebell_log.engolido("troca: atualizar painel")
+
+
+def rotear_modelo(texto):
+    """No modo automático, escolhe e troca o modelo pela tarefa, com uma
+    trava simples anti-ping-pong: só cai de volta para o geral quando a
+    mensagem claramente não é de código."""
+    if not MODELO_AUTO:
+        return
+    dominio = escolher_dominio(texto)
+    if dominio == estado.dominio_atual:
+        return
+    trocar_para_dominio(dominio)
 
 
 def parar_ollama(modo=None):
@@ -9267,7 +9381,7 @@ def run_model_round(allow_tools, opcoes=None):
     """Uma chamada ao modelo. Fala em streaming e devolve (texto, chamadas)."""
 
     payload = {
-        "model": MODEL_NAME,
+        "model": modelo_em_uso(),
         "messages": estado.history,
         "stream": True,
         # O esforço "alto" liga o raciocínio antes da resposta; os
@@ -9925,6 +10039,22 @@ def hud_set_voz(chave):
     ui_message("nebell", mensagem)
 
 
+def hud_set_modelo(valor):
+    """A caixa de modelo da janela: 'auto' (a NEBELL decide pela tarefa)
+    ou um especialista ('geral' / 'codigo', escolha manual)."""
+    global MODELO_AUTO
+    v = (valor or "").strip().lower()
+
+    if v == "auto":
+        MODELO_AUTO = True
+        print("\n[Modelo] Escolha automática ligada.")
+        ui_message("nebell", "Escolha de modelo no automático, senhor.")
+        return
+
+    MODELO_AUTO = False
+    trocar_para_dominio("codigo" if v == "codigo" else "geral")
+
+
 def hud_salvar(nome, texto):
     """O botão BAIXAR de um bloco de código: salva em arquivo pela
     janela, com o diálogo nativo de salvar."""
@@ -9959,6 +10089,7 @@ def hud_ready():
     try:
         estado.hud.set_vozes(vozes_disponiveis(), _chave_voz_atual())
         estado.hud.mostrar_escutando(escuta_armada.is_set())
+        estado.hud.set_modelo_atual("auto" if MODELO_AUTO else estado.dominio_atual)
     except Exception:
         nebell_log and nebell_log.engolido("hud: estado inicial de voz/escuta")
 
@@ -10139,6 +10270,13 @@ def dispatcher_loop():
         if origem == "voz":
             ui_message("user", texto)
 
+        # No automático, escolhe/troca o modelo pela tarefa ANTES de
+        # responder (com aviso e a nuvem 'trocando'). No manual, não mexe.
+        try:
+            rotear_modelo(texto)
+        except Exception:
+            nebell_log and nebell_log.engolido("rotear modelo")
+
         try:
             ask_nebell(texto)
         except Exception as exc:
@@ -10174,7 +10312,7 @@ def coletar_estatisticas():
     else:
         dados["gpuLabel"] = "sem GPU NVIDIA"
 
-    dados["model"] = MODEL_NAME
+    dados["model"] = modelo_em_uso()
     dados["voice"] = f"Piper · {VOICE_MODEL.parent.name}"
 
     if estado.whisper_model is not None:
@@ -10278,6 +10416,7 @@ def run_hud_mode():
     estado.hud.on_set_voz = hud_set_voz
     estado.hud.on_escutar = hud_escutar
     estado.hud.on_salvar = hud_salvar
+    estado.hud.on_set_modelo = hud_set_modelo
     estado.hud.on_abrir_conversa = hud_abrir_conversa
     estado.hud.on_nova_conversa = hud_nova_conversa
     estado.hud.obter_conversas = listar_conversas

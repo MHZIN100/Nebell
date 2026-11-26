@@ -234,6 +234,10 @@ function setVozes(list,atual){const sel=$('#vozSel');if(!sel||!Array.isArray(lis
  for(const v of list){const o=document.createElement('option');o.value=v.chave||'';o.textContent=v.rotulo||v.chave||'voz';sel.append(o)}
  if(atual!=null&&atual!=='')sel.value=String(atual);}
 function setVozAtual(ch){const sel=$('#vozSel');if(sel&&ch!=null&&ch!=='')sel.value=String(ch)}
+// Caixa de MODELO (o "cérebro"): 'auto' (a NEBELL decide pela tarefa) ou
+// um especialista ('geral'/'codigo', escolha manual). O Python manda o
+// valor atual na abertura e a cada troca.
+function setModeloSel(v){const s=$('#modelo');if(s&&v)s.value=String(v)}
 // Botão de microfone (clique-para-falar). A NEBELL NÃO escuta por conta
 // própria: ela só abre o microfone por uma fala quando este botão é
 // clicado, igual ao ditado do ChatGPT. O Python é quem manda o estado de
@@ -283,7 +287,7 @@ const api={
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>{nucleo.setLevel(v);empurrarVoz(v)},
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
- setVozes,setVozAtual,setEscutando,setConversas:renderConversas,limparLog,
+ setVozes,setVozAtual,setEscutando,setModeloSel,setConversas:renderConversas,limparLog,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
 
@@ -340,6 +344,8 @@ $('#txt').addEventListener('keydown',e=>{marcarAtividade();if(e.key==='Enter'){s
 $('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
 // Trocar a voz pelo seletor do painel SISTEMA.
 $('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;const b=bridge();if(b&&b.set_voz)b.set_voz(v)});
+// Trocar o MODELO (cérebro): auto / geral / código.
+$('#modelo').addEventListener('change',e=>{const b=bridge();if(b&&b.set_modelo)b.set_modelo(e.target.value)});
 // Microfone (clique-para-falar): um clique abre a escuta por uma fala; o
 // Python captura, responde e devolve ao repouso. Clicar de novo enquanto
 // ouve cancela. É o Python que confirma o estado via setEscutando; sem

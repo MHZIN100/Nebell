@@ -57,5 +57,11 @@
   "esp_ligado": false,
 
   "_ajuda_esp_porta": "Porta que a placa usa para conectar no PC. Padrao: 8765. Tem de bater com a do sketch da placa e com a regra do firewall.",
-  "esp_porta": 8765
+  "esp_porta": 8765,
+
+  "_ajuda_modelo_codigo": "Modelo ESPECIALISTA em codigo (opcional). Em maquina fraca (8 GB), em vez de um modelo grande 'pra tudo', a NEBELL troca para um modelo pequeno bom em codigo quando a tarefa pede. Baixe no Ollama antes (ex.: 'ollama pull qwen2.5-coder:3b') e ponha o nome aqui. Vazio = usa sempre o modelo geral. A troca descarrega um e carrega o outro (uns segundos, com aviso).",
+  "modelo_codigo": "",
+
+  "_ajuda_modelo_auto": "Escolha do modelo: false = manual (voce escolhe na caixa 'Modelo' da janela); true = automatico (a NEBELL escolhe pela tarefa: codigo -> modelo de codigo). Padrao: false.",
+  "modelo_auto": false
 }
