@@ -393,7 +393,7 @@ MODEL_NAME = "qwen3.5:4b"
 # 'geral' e sempre o MODEL_NAME acima. Os outros ficam vazios por padrao
 # (nada muda) ate voce baixar um modelo no Ollama (ex.: ollama pull
 # qwen2.5-coder:3b) e apontar aqui ou no nebell_config.json.
-MODELO_CODIGO = ""      # ex.: "qwen2.5-coder:3b"; vazio = usa o geral
+MODELO_CODIGO = "qwen2.5-coder:7b"   # especialista de programação; vazio = usa o geral
 # Escolha do modelo: False = manual (voce escolhe na janela); True = a
 # NEBELL escolhe pela tarefa (codigo -> modelo de codigo).
 MODELO_AUTO = False
@@ -2594,6 +2594,30 @@ def modelo_disponivel():
         return True, []          # sem resposta, nao atrapalha a abertura
 
 
+def modelo_instalado(nome):
+    """Confere se UM modelo específico já foi baixado no Ollama. Serve para
+    não trocar para um especialista que a pessoa ainda não puxou (daria erro
+    em cada resposta). Sem resposta do Ollama, assume que sim para não travar."""
+    nome = (nome or "").strip()
+
+    if not nome:
+        return False
+
+    try:
+        resposta = session.get(OLLAMA_TAGS_URL, timeout=5)
+        resposta.raise_for_status()
+        modelos = [m.get("name", "") for m in resposta.json().get("models", [])]
+
+        if not modelos:
+            return True
+
+        base = nome.split(":")[0]
+        return any(m == nome or m.split(":")[0] == base for m in modelos)
+
+    except Exception:
+        return True
+
+
 # ============================================================
 # LIBERAR A MAQUINA
 # ============================================================
@@ -2679,12 +2703,17 @@ def modelo_em_uso():
     return estado.modelo_atual or MODEL_NAME
 
 
+# Nome amigável de cada domínio (para avisos na janela).
+NOME_DO_DOMINIO = {"geral": "conversa", "codigo": "programação"}
+
+
 def modelo_do_dominio(dominio):
     """O nome do modelo para um domínio. Se o especialista não está
-    configurado, cai no geral (nada quebra)."""
-    if dominio == "codigo" and MODELO_CODIGO.strip():
-        return MODELO_CODIGO.strip()
-    return MODEL_NAME
+    configurado, cai no geral (nada quebra). Para somar um especialista novo
+    no futuro, basta mapear o domínio ao seu modelo aqui."""
+    especialistas = {"codigo": MODELO_CODIGO.strip()}
+    modelo = especialistas.get(dominio, "")
+    return modelo or MODEL_NAME
 
 
 # Heurística leve (sem gastar RAM com um classificador): a mensagem
@@ -2726,13 +2755,25 @@ def trocar_para_dominio(dominio):
     pré-carrega o novo. Se o alvo já é o atual, não faz nada (sem atraso).
     """
     alvo = modelo_do_dominio(dominio)
+    nome = NOME_DO_DOMINIO.get(dominio, "conversa")
+
+    # Especialista pedido, mas ainda não baixado: avisa como puxar e segue no
+    # geral (nada quebra — melhor do que erro em cada resposta).
+    if alvo != MODEL_NAME and not modelo_instalado(alvo):
+        ui_message(
+            "nebell",
+            f"O modelo de {nome} ({alvo}) ainda não está baixado, senhor. "
+            f"É só rodar no terminal: ollama pull {alvo}. Por enquanto sigo no geral.",
+        )
+        dominio = "geral"
+        alvo = MODEL_NAME
+
     estado.dominio_atual = dominio
 
     if alvo == modelo_em_uso():
         return
 
     ui_state("trocando")
-    nome = "código" if dominio == "codigo" else "conversa"
     ui_message("nebell", f"Um momento, senhor: preparando o modelo de {nome}.")
 
     try:
@@ -2761,8 +2802,8 @@ def perguntar_troca(dominio, origem, texto):
     estado.dominio_pendente = dominio
     estado.origem_pendente = origem
 
-    alvo = "Código" if dominio == "codigo" else "Geral"
-    atual = "Código" if estado.dominio_atual == "codigo" else "Geral"
+    alvo = "Programação" if dominio == "codigo" else "Geral"
+    atual = "Programação" if estado.dominio_atual == "codigo" else "Geral"
     try:
         estado.hud.pedir_confirmacao_troca(alvo, atual)
         ui_state("idle")
@@ -10255,6 +10296,15 @@ def hud_escutar():
     """
     if escuta_armada.is_set():
         return   # já ouvindo; o botão vira ENVIAR/cancelar
+
+    # Se ela estiver falando (até um aviso que deu sozinha), quem clicou no
+    # microfone quer falar AGORA: cala a fala para a captura começar na hora,
+    # em vez de ficar presa esperando o rabo da fala terminar.
+    if falando_agora.is_set():
+        try:
+            stop_speaking()
+        except Exception:
+            nebell_log and nebell_log.engolido("microfone: calar fala no clique")
 
     if not microphone_available():
         if estado.mic_manager is not None:

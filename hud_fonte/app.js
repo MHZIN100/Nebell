@@ -15,14 +15,20 @@ const FAMILIA={espera:'idle',ouvindo:'listening',pensando:'thinking',
 
 function bridge(){return window.pywebview&&window.pywebview.api?window.pywebview.api:null}
 
+// Estados de REPOUSO: nesses, o microfone volta a ser microfone.
+// Em qualquer outro (pensando, falando, trocando, ferramenta...) ela
+// está ocupada e o ícone vira o botão de parar. Derivamos direto do
+// estado da forma (estável), não do mapa de cor — antes um estado fora
+// do mapa caía em 'trabalhando' e o botão ficava travado como parar.
+const _REPOUSO={espera:1,ouvindo:1};
 function setState(s){
  if(!nucleo.setState(s))return;
  const n=nucleo.numeros;
  $('#state').textContent=n.rotulo;
  $('#sub').textContent=n.diz;
- const fam=FAMILIA[n.estado]||'trabalhando';
+ const fam=FAMILIA[n.estado]||'thinking';
  document.body.dataset.state=fam;
- _ocupada=!!_OCUPADA[fam];
+ _ocupada=!_REPOUSO[n.estado];
  if(typeof atualizarMic==='function')atualizarMic();}
 // ---- Markdown seguro ------------------------------------------------
 // A mensagem renderizada vem do MODELO. Renderizar errado seria abrir
@@ -203,6 +209,12 @@ function streamMessage(text){
   while(log.children.length>60)log.firstChild.remove();
  }
  renderMarkdown(streamP,text);
+ // O cursor piscando (▊) é um ::after no fim da bolha. Quando ela termina
+ // num bloco (código, tabela, gráfico) ele sobrava como um quadradinho
+ // solto embaixo do bloco. Nesses casos, escondemos o cursor.
+ const fim=streamP.lastElementChild;
+ const bloco=fim&&/^(codebloco|tabela-wrap|grafico)$/.test(fim.className.split(' ')[0]);
+ streamP.classList.toggle('fim-bloco',!!bloco);
  log.scrollTop=log.scrollHeight}
 function fecharStream(){
  if(streamP){const d=streamP.parentElement;if(d)d.classList.remove('streaming');streamP=null}}
@@ -278,7 +290,6 @@ function confirmarTroca(info){
 //  parar  -> a NEBELL está falando/gerando: clique interrompe (ela pode
 //            estar falando sem a gente ter pedido, ex.: um aviso).
 let _ouvindo=false,_ocupada=false;
-const _OCUPADA={thinking:1,speaking:1,trabalhando:1};
 function modoMic(modo){
  const b=$('#micbtn');if(!b)return;
  b.dataset.modo=modo;

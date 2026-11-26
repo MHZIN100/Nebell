@@ -919,6 +919,11 @@ class TestPagina(HudTest):
         for campo in ['id="micV"', 'id="stt"', 'id="loc"', 'id="mic"']:
             self.assertIn(campo, H.HUD_HTML, campo)
 
+    def test_seletor_de_modelo_tem_programacao(self):
+        # O especialista de código aparece como "Programação" no cérebro.
+        self.assertIn('id="modelo"', H.HUD_HTML)
+        self.assertIn('value="codigo">Programação', H.HUD_HTML)
+
 
 class TestChamadasParaAPagina(HudTest):
     def test_guarda_antes_de_a_pagina_abrir(self):
@@ -1520,6 +1525,16 @@ class TestMarkdownSeguroFonte(unittest.TestCase):
         self.assertIn(".codebloco", self.css)
         # Os botões do bloco (copiar/baixar) são estilizados por .cb-bt.
         self.assertIn(".cb-bt", self.css)
+
+    def test_cursor_some_quando_termina_num_bloco(self):
+        # O quadradinho piscando (::after) não pode sobrar embaixo de um
+        # bloco de código/tabela/gráfico.
+        self.assertIn("fim-bloco", self.app)
+        self.assertIn(".fim-bloco", self.css)
+
+    def test_codigo_e_monoespacado(self):
+        # O bloco de código tem de usar fonte mono (antes herdava a da janela).
+        self.assertIn("Share Tech Mono", self.css)
 
 
 if __name__ == "__main__":

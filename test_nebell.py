@@ -3494,6 +3494,56 @@ class TestOllamaAutomatico(NebellTest):
         with mock.patch.object(J.session, "get", side_effect=Exception("off")):
             self.assertTrue(J.modelo_disponivel()[0])
 
+    def test_modelo_instalado_reconhece_o_que_existe(self):
+        resposta = mock.Mock()
+        resposta.json.return_value = {"models": [{"name": "qwen2.5-coder:7b"}]}
+        resposta.raise_for_status = mock.Mock()
+
+        with mock.patch.object(J.session, "get", return_value=resposta):
+            self.assertTrue(J.modelo_instalado("qwen2.5-coder:7b"))
+            self.assertFalse(J.modelo_instalado("llava:7b"))
+
+    def test_modelo_instalado_sem_resposta_assume_que_sim(self):
+        with mock.patch.object(J.session, "get", side_effect=Exception("off")):
+            self.assertTrue(J.modelo_instalado("qualquer:coisa"))
+
+    def test_troca_para_especialista_que_falta_fica_no_geral(self):
+        # Pede o domínio de código, mas o modelo de código não está baixado:
+        # a NEBELL avisa como puxar e continua no geral, sem trocar.
+        estado = J.estado
+        estado.modelo_atual = None
+        estado.dominio_atual = "geral"
+        avisos = []
+
+        with mock.patch.object(J, "MODELO_CODIGO", "qwen2.5-coder:7b"), \
+             mock.patch.object(J, "modelo_instalado", return_value=False), \
+             mock.patch.object(J, "ui_message", side_effect=lambda p, t: avisos.append(t)), \
+             mock.patch.object(J, "precarregar_modelo") as pre, \
+             mock.patch.object(J, "descarregar_modelo"):
+            J.trocar_para_dominio("codigo")
+
+        self.assertEqual(estado.dominio_atual, "geral")
+        self.assertIsNone(estado.modelo_atual)       # não trocou
+        pre.assert_not_called()
+        self.assertTrue(any("ollama pull qwen2.5-coder:7b" in a for a in avisos))
+
+    def test_clicar_no_microfone_cala_a_fala(self):
+        # Quem clica no microfone quer falar agora: se ela está falando
+        # (até um aviso que deu sozinha), a fala é cortada para a captura começar.
+        J.escuta_armada.clear()
+        J.falando_agora.set()
+
+        with mock.patch.object(J, "microphone_available", return_value=True), \
+             mock.patch.object(J, "stop_speaking") as parar, \
+             mock.patch.object(J, "_refletir_escuta"), \
+             mock.patch.object(J, "ui_state"):
+            J.hud_escutar()
+
+        parar.assert_called_once()
+        self.assertTrue(J.escuta_armada.is_set())
+        J.escuta_armada.clear()
+        J.falando_agora.clear()
+
 
 class TestNavegadorBrave(NebellTest):
     def setUp(self):
