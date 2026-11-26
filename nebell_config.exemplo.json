@@ -63,5 +63,8 @@
   "modelo_codigo": "",
 
   "_ajuda_modelo_auto": "Escolha do modelo: false = manual (voce escolhe na caixa 'Modelo' da janela); true = automatico (a NEBELL escolhe pela tarefa: codigo -> modelo de codigo). Padrao: false.",
-  "modelo_auto": false
+  "modelo_auto": false,
+
+  "_ajuda_modelo_avisa": "No automatico, perguntar antes de trocar de modelo (aparece uma pergunta com botoes na janela: 'Trocar e responder' / 'Responder no atual' / 'Nao perguntar de novo'). true = pergunta (automatico, mas sob controle); false = troca sozinha. Padrao: true.",
+  "modelo_avisa": true
 }

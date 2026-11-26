@@ -162,6 +162,14 @@ main{display:grid;grid-template-columns:252px 1fr 312px;gap:17px;min-height:0}
  transition:height .5s cubic-bezier(.2,.7,.2,1)}
 .g-rot{font-size:10px;color:var(--dim);text-align:center;overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}
 .g-cru{margin:0;white-space:pre-wrap;color:var(--dim);font-size:12px}
+/* Confirmação de troca de modelo: botões na bolha. */
+.confirma-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;align-items:center}
+.conf-bt{padding:8px 13px;border-radius:9px;font:500 10px Orbitron,sans-serif;letter-spacing:.08em;
+ background:var(--panel);border:1px solid var(--line-2);color:var(--acc);cursor:pointer;transition:background .15s,border-color .15s}
+.conf-bt:hover{background:var(--acc-soft);border-color:var(--acc)}
+.conf-bt.conf-sim{background:rgba(166,107,255,.18);border-color:var(--acc);color:#fff}
+.conf-bt:disabled{opacity:.4;cursor:default}
+.conf-feito{font-size:11px;color:var(--faint);letter-spacing:.04em;margin-left:2px}
 .msg.streaming>div:last-child::after{content:"▊";color:var(--acc);animation:pisca 1s steps(2) infinite}
 @keyframes pisca{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.msg.streaming>div:last-child::after{animation:none}}

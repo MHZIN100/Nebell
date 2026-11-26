@@ -273,6 +273,7 @@ _CONFIG_CAMPOS = {
     "esp_porta": ("ESP_PORTA", "num"),
     "modelo_codigo": ("MODELO_CODIGO", "txt"),
     "modelo_auto": ("MODELO_AUTO", "bool"),
+    "modelo_avisa": ("MODELO_AVISA", "bool"),
 }
 
 
@@ -396,6 +397,9 @@ MODELO_CODIGO = ""      # ex.: "qwen2.5-coder:3b"; vazio = usa o geral
 # Escolha do modelo: False = manual (voce escolhe na janela); True = a
 # NEBELL escolhe pela tarefa (codigo -> modelo de codigo).
 MODELO_AUTO = False
+# No automatico, perguntar antes de trocar (avisa e espera), com botoes na
+# janela. True = pergunta; False = troca sozinha. Padrao: True.
+MODELO_AVISA = True
 
 # ---- o que fazer com a maquina ao sair ---------------------
 # O Ollama guarda o modelo na memoria da placa por KEEP_ALIVE depois da
@@ -882,6 +886,11 @@ class Estado:
         # Só muda quando a pessoa troca na janela ou o automático decide.
         self.modelo_atual = None
         self.dominio_atual = "geral"
+        # Confirmação de troca (automático "avisa e espera").
+        self.pedido_pendente = None
+        self.dominio_pendente = None
+        self.origem_pendente = None
+        self.troca_sem_perguntar = False   # "não perguntar de novo" nesta sessão
         # Turno atual: modo, flags de geracao e ferramentas da vez.
         self.interaction_mode = "text"
         self.first_chunk_pending = True
@@ -2739,16 +2748,85 @@ def trocar_para_dominio(dominio):
         nebell_log and nebell_log.engolido("troca: atualizar painel")
 
 
-def rotear_modelo(texto):
-    """No modo automático, escolhe e troca o modelo pela tarefa, com uma
-    trava simples anti-ping-pong: só cai de volta para o geral quando a
-    mensagem claramente não é de código."""
+def perguntar_troca(dominio, origem, texto):
+    """Segura o pedido e pergunta na janela se pode trocar de modelo
+    (automático 'avisa e espera'). A resposta vem pelo clique
+    (hud_confirmar_troca). Devolve True se conseguiu perguntar."""
+    if estado.hud is None:
+        return False
+
+    estado.pedido_pendente = texto
+    estado.dominio_pendente = dominio
+    estado.origem_pendente = origem
+
+    alvo = "Código" if dominio == "codigo" else "Geral"
+    atual = "Código" if estado.dominio_atual == "codigo" else "Geral"
+    try:
+        estado.hud.pedir_confirmacao_troca(alvo, atual)
+        ui_state("idle")
+        return True
+    except Exception:
+        nebell_log and nebell_log.engolido("perguntar troca")
+        estado.pedido_pendente = None
+        return False
+
+
+def rotear_modelo(texto, origem="texto"):
+    """
+    No automático, escolhe o modelo pela tarefa. Trava anti-ping-pong: só
+    troca quando o domínio muda de verdade. Com MODELO_AVISA, SEGURA o
+    pedido e pergunta antes de trocar.
+
+    Devolve True para responder agora; False se segurou o pedido à espera
+    da confirmação de troca.
+    """
     if not MODELO_AUTO:
-        return
+        return True
+
     dominio = escolher_dominio(texto)
+
     if dominio == estado.dominio_atual:
-        return
+        return True
+
+    # Precisa trocar. Pergunta antes (avisa e espera), a não ser que a
+    # pessoa já tenha dito "não perguntar de novo" nesta sessão.
+    if MODELO_AVISA and not estado.troca_sem_perguntar:
+        if perguntar_troca(dominio, origem, texto):
+            return False      # segurou: responde depois do clique
+
     trocar_para_dominio(dominio)
+    return True
+
+
+def hud_confirmar_troca(resposta):
+    """Resposta dos botões da confirmação de troca: 'trocar', 'ficar' ou
+    'nunca' (não perguntar de novo, e daqui pra frente troca sozinha)."""
+    texto = estado.pedido_pendente
+    origem = estado.origem_pendente or "texto"
+    dominio = estado.dominio_pendente or "geral"
+
+    estado.pedido_pendente = None
+    estado.dominio_pendente = None
+    estado.origem_pendente = None
+
+    if texto is None:
+        return
+
+    resp = (resposta or "").strip().lower()
+
+    if resp == "nunca":
+        estado.troca_sem_perguntar = True
+
+    if resp in ("trocar", "nunca"):
+        trocar_para_dominio(dominio)
+        try:
+            estado.hud.set_modelo_atual("auto")
+        except Exception:
+            pass
+    # 'ficar': responde no modelo atual mesmo.
+
+    # Reinjeta o pedido para ser respondido agora (sem roteAr de novo).
+    request_queue.put(("confirmado", texto))
 
 
 def parar_ollama(modo=None):
@@ -10265,17 +10343,26 @@ def dispatcher_loop():
             request_queue.put(("sair", ""))
             continue
 
+        # "confirmado" = pedido reinjetado depois da confirmação de troca:
+        # não mostra o usuário de novo nem roteia; só responde.
+        confirmado = origem == "confirmado"
+        if confirmado:
+            origem = estado.origem_pendente or "texto"
+
         estado.interaction_mode = "voice" if origem == "voz" else "text"
 
-        if origem == "voz":
+        if origem == "voz" and not confirmado:
             ui_message("user", texto)
 
-        # No automático, escolhe/troca o modelo pela tarefa ANTES de
-        # responder (com aviso e a nuvem 'trocando'). No manual, não mexe.
-        try:
-            rotear_modelo(texto)
-        except Exception:
-            nebell_log and nebell_log.engolido("rotear modelo")
+        # No automático, escolhe o modelo pela tarefa. Pode SEGURAR o
+        # pedido para perguntar antes de trocar (avisa e espera): aí
+        # responde só depois do clique. No manual, não mexe.
+        if not confirmado:
+            try:
+                if not rotear_modelo(texto, origem):
+                    continue
+            except Exception:
+                nebell_log and nebell_log.engolido("rotear modelo")
 
         try:
             ask_nebell(texto)
@@ -10417,6 +10504,7 @@ def run_hud_mode():
     estado.hud.on_escutar = hud_escutar
     estado.hud.on_salvar = hud_salvar
     estado.hud.on_set_modelo = hud_set_modelo
+    estado.hud.on_confirmar_troca = hud_confirmar_troca
     estado.hud.on_abrir_conversa = hud_abrir_conversa
     estado.hud.on_nova_conversa = hud_nova_conversa
     estado.hud.obter_conversas = listar_conversas

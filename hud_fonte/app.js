@@ -238,6 +238,35 @@ function setVozAtual(ch){const sel=$('#vozSel');if(sel&&ch!=null&&ch!=='')sel.va
 // um especialista ('geral'/'codigo', escolha manual). O Python manda o
 // valor atual na abertura e a cada troca.
 function setModeloSel(v){const s=$('#modelo');if(s&&v)s.value=String(v)}
+// Confirmação de troca de modelo (automático "avisa e espera"): uma bolha
+// com botões. A escolha volta ao Python por confirmar_troca(resp).
+function confirmarTroca(info){
+ fecharStream();info=info||{};
+ const alvo=info.alvo||'Código',atual=info.atual||'Geral';
+ const log=$('#log');if(!log)return;
+ const d=document.createElement('div');d.className='msg nebell';
+ d.appendChild(metaMsg('nebell'));
+ const p=document.createElement('div');p.className='linha';
+ p.textContent='Isso parece tarefa de '+alvo.toLowerCase()+', senhor. Quer que eu troque para o modelo de '+alvo+'? A troca leva alguns segundos.';
+ d.appendChild(p);
+ const acoes=document.createElement('div');acoes.className='confirma-acoes';
+ function decidir(resp,rotuloFeito){
+  const br=bridge();if(br&&br.confirmar_troca){try{br.confirmar_troca(resp)}catch(e){}}
+  acoes.querySelectorAll('button').forEach(x=>x.disabled=true);
+  const f=document.createElement('span');f.className='conf-feito';f.textContent=rotuloFeito;acoes.appendChild(f);
+ }
+ function botao(rotulo,resp,feito,primario){
+  const b=document.createElement('button');b.type='button';b.className='conf-bt'+(primario?' conf-sim':'');
+  b.textContent=rotulo;b.addEventListener('click',()=>decidir(resp,feito));return b;
+ }
+ acoes.append(
+  botao('Trocar e responder','trocar','trocando…',true),
+  botao('Responder no '+atual,'ficar','mantendo o '+atual,false),
+  botao('Não perguntar de novo','nunca','ok, não pergunto mais',false),
+ );
+ d.appendChild(acoes);
+ log.append(d);while(log.children.length>60)log.firstChild.remove();log.scrollTop=log.scrollHeight;
+}
 // Botão de microfone (clique-para-falar). A NEBELL NÃO escuta por conta
 // própria: ela só abre o microfone por uma fala quando este botão é
 // clicado, igual ao ditado do ChatGPT. O Python é quem manda o estado de
@@ -287,7 +316,7 @@ const api={
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>{nucleo.setLevel(v);empurrarVoz(v)},
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
- setVozes,setVozAtual,setEscutando,setModeloSel,setConversas:renderConversas,limparLog,
+ setVozes,setVozAtual,setEscutando,setModeloSel,confirmarTroca,setConversas:renderConversas,limparLog,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
 
