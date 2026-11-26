@@ -966,7 +966,9 @@ contador_de_falas = threading.Lock()
 busy_event = threading.Event()      # falando ou gerando: pode ser cortado
 cancel_event = threading.Event()    # o usuario mandou parar
 troca_de_voz = threading.Lock()
-escuta_armada = threading.Event()   # ligado = microfone aberto por UMA fala (clique-para-falar)
+escuta_armada = threading.Event()   # ligado = microfone aberto, gravando até você mandar parar
+parar_escuta_evt = threading.Event()    # você clicou em ENVIAR: para de gravar e manda
+cancelar_escuta_evt = threading.Event() # você clicou no X: descarta o que gravou
 _filler_cache = {}
 
 # Descarregar na ociosidade: depois de um tempo parado, soltamos o qwen
@@ -3643,6 +3645,51 @@ def capture_audio(timeout, phrase_time_limit):
                 raise exc
 
     return None
+
+
+def capturar_continuo(parar_evento):
+    """Grava até você mandar parar (gravar_ate_parar), com uma segunda
+    tentativa se o microfone sumir no meio."""
+    for tentativa in (1, 2):
+        try:
+            return estado.mic_manager.gravar_ate_parar(parar_evento)
+        except Exception as exc:
+            if tentativa == 2 or not estado.mic_manager.recover():
+                raise exc
+
+    return None
+
+
+def escutar_continuo(parar_evento):
+    """Grava continuamente (sem cortar no silêncio) e transcreve. Devolve
+    o texto, ou None."""
+    if not microphone_available():
+        return None
+
+    try:
+        audio = capturar_continuo(parar_evento)
+
+        if audio is None:
+            return None
+
+        result = transcribe(audio)
+
+        if result:
+            print(f"\nVocê: {result}")
+
+        return result or None
+
+    except sr.UnknownValueError:
+        print("[Não consegui entender sua fala.]")
+        return None
+
+    except sr.RequestError as exc:
+        print(f"[Erro no reconhecimento de voz: {exc}]")
+        return None
+
+    except Exception as exc:
+        print(f"[Erro no microfone: {exc}]")
+        return None
 
 
 def listen(timeout=8, phrase_time_limit=12):
@@ -10200,16 +10247,14 @@ def desarmar_escuta(mensagem=None):
 
 def hud_escutar():
     """
-    O botao de microfone da janela (clique-para-falar).
+    O botao de microfone da janela: abre a escuta e GRAVA ATE voce mandar.
 
-    A NEBELL nao escuta sozinha: este clique abre o microfone por UMA
-    fala, como o ditado do ChatGPT. Clicar de novo enquanto ela ouve
-    cancela. Fora disso, a conversa e so por texto.
+    A NEBELL nao escuta sozinha. Um clique comeca a gravar e segue
+    gravando (sem cortar numa pausa para respirar) ate voce clicar em
+    ENVIAR (manda) ou no X (cancela).
     """
     if escuta_armada.is_set():
-        desarmar_escuta()
-        print("\n[Microfone] Escuta cancelada pelo usuário.")
-        return
+        return   # já ouvindo; o botão vira ENVIAR/cancelar
 
     if not microphone_available():
         if estado.mic_manager is not None:
@@ -10223,54 +10268,79 @@ def hud_escutar():
         ui_message("nebell", "Não encontrei um microfone disponível, senhor.")
         return
 
+    parar_escuta_evt.clear()
+    cancelar_escuta_evt.clear()
     escuta_armada.set()
     _refletir_escuta()
     ui_state("listening")
-    print("\n[Microfone] Escutando (uma fala).")
+    print("\n[Microfone] Ouvindo (clique em enviar para mandar).")
+
+
+def hud_parar_escuta():
+    """Botao ENVIAR: para de gravar e manda o que captou."""
+    if escuta_armada.is_set():
+        parar_escuta_evt.set()
+        print("\n[Microfone] Enviando...")
+
+
+def hud_cancelar_escuta():
+    """Botao X: para de gravar e DESCARTA (nao manda)."""
+    cancelar_escuta_evt.set()
+    parar_escuta_evt.set()
+    print("\n[Microfone] Gravação cancelada.")
 
 
 def voice_listen_loop():
     """
-    Escuta clique-para-falar: fica em silencio ate o usuario clicar no
-    microfone (hud_escutar arma a escuta). Ai captura UMA fala, enfileira
-    e volta ao repouso. Nao ha mais escuta continua nem palavra de
-    ativacao -- o microfone so abre quando a pessoa pede.
+    Escuta por clique, GRAVANDO ATE voce mandar. Fica em silencio ate
+    hud_escutar armar; ai grava continuamente (sem cortar no silencio)
+    ate ENVIAR (parar_escuta_evt) ou X (cancelar_escuta_evt). No ENVIAR,
+    transcreve e enfileira; no X, descarta.
     """
     while not shutdown_event.is_set():
         try:
-            # Microfone fechado (o normal): a conversa e por texto. Só
-            # abre quando o botão de microfone é clicado.
+            # Microfone fechado (o normal): a conversa e por texto.
             if not escuta_armada.is_set():
-                time.sleep(0.12)
+                time.sleep(0.1)
                 continue
 
-            # Nao escuta enquanto ele fala: o microfone capta o
-            # alto-falante e ele responderia a si mesmo.
+            # Nao grava enquanto ela fala: o microfone capta o alto-falante.
             if busy_event.is_set() or falando_agora.is_set():
-                time.sleep(0.12)
+                time.sleep(0.1)
                 continue
 
             if not microphone_available():
                 desarmar_escuta("Perdi o microfone, senhor. É só clicar de novo.")
                 continue
 
+            parar_escuta_evt.clear()
+            cancelar_escuta_evt.clear()
             ui_state("listening")
-            ouvido = listen(timeout=8, phrase_time_limit=18)
 
-            # Clicou de novo no meio = cancelou: descarta o que veio.
-            if not escuta_armada.is_set():
-                ui_state("idle")
-                continue
+            try:
+                audio = capturar_continuo(parar_escuta_evt)
+            except Exception:
+                audio = None
 
-            # Uma fala por clique: fecha o microfone e volta ao repouso.
+            # A gravação terminou: fecha a escuta e volta ao repouso.
             escuta_armada.clear()
             _refletir_escuta()
             ui_state("idle")
 
-            if not ouvido or busy_event.is_set():
+            # Cancelado (X), nada captado, ou ela já está ocupada: descarta.
+            if cancelar_escuta_evt.is_set() or audio is None or busy_event.is_set():
                 continue
 
-            pedido = (extrair_pedido(ouvido) or "").strip()
+            texto = None
+            try:
+                texto = transcribe(audio)
+            except Exception:
+                texto = None
+
+            if texto:
+                print(f"\nVocê: {texto}")
+
+            pedido = (extrair_pedido(texto) or "").strip() if texto else ""
 
             if not pedido:
                 continue
@@ -10502,6 +10572,8 @@ def run_hud_mode():
     estado.hud.on_set_esforco = hud_set_esforco
     estado.hud.on_set_voz = hud_set_voz
     estado.hud.on_escutar = hud_escutar
+    estado.hud.on_parar_escuta = hud_parar_escuta
+    estado.hud.on_cancelar_escuta = hud_cancelar_escuta
     estado.hud.on_salvar = hud_salvar
     estado.hud.on_set_modelo = hud_set_modelo
     estado.hud.on_confirmar_troca = hud_confirmar_troca

@@ -20,7 +20,10 @@ function setState(s){
  const n=nucleo.numeros;
  $('#state').textContent=n.rotulo;
  $('#sub').textContent=n.diz;
- document.body.dataset.state=FAMILIA[n.estado]||'trabalhando'}
+ const fam=FAMILIA[n.estado]||'trabalhando';
+ document.body.dataset.state=fam;
+ _ocupada=!!_OCUPADA[fam];
+ if(typeof atualizarMic==='function')atualizarMic();}
 // ---- Markdown seguro ------------------------------------------------
 // A mensagem renderizada vem do MODELO. Renderizar errado seria abrir
 // XSS na janela, entao NUNCA usamos innerHTML com texto do modelo: tudo
@@ -269,12 +272,28 @@ function confirmarTroca(info){
 }
 // Botão de microfone (clique-para-falar). A NEBELL NÃO escuta por conta
 // própria: ela só abre o microfone por uma fala quando este botão é
-// clicado, igual ao ditado do ChatGPT. O Python é quem manda o estado de
-// verdade (ligou a escuta / terminou de capturar), e o visual segue o
-// aria-pressed: aceso = ouvindo agora.
-function setEscutando(on){const b=$('#micbtn');if(!b)return;
- b.setAttribute('aria-pressed',on?'true':'false');
- b.title=on?'Ouvindo… clique para parar':'Clique para falar';}
+// O botão de microfone tem 3 modos, decididos pelo que está acontecendo:
+//  mic    -> parado: clique começa a escutar.
+//  enviar -> ouvindo agora: clique PARA e manda; aparece o X de cancelar.
+//  parar  -> a NEBELL está falando/gerando: clique interrompe (ela pode
+//            estar falando sem a gente ter pedido, ex.: um aviso).
+let _ouvindo=false,_ocupada=false;
+const _OCUPADA={thinking:1,speaking:1,trabalhando:1};
+function modoMic(modo){
+ const b=$('#micbtn');if(!b)return;
+ b.dataset.modo=modo;
+ b.title=modo==='enviar'?'Ouvindo — toque para enviar':modo==='parar'?'Interromper':'Clique para falar';
+ const x=$('#cancelar');if(x)x.hidden=(modo!=='enviar');
+ const txt=$('#txt');
+ if(txt)txt.placeholder=(modo==='enviar')?'Ouvindo… toque no envio para mandar':'Escreva uma mensagem…';
+}
+function atualizarMic(){
+ if(_ouvindo)modoMic('enviar');
+ else if(_ocupada)modoMic('parar');
+ else modoMic('mic');
+}
+// O Python confirma o estado da escuta por aqui (ligou / terminou).
+function setEscutando(on){_ouvindo=!!on;atualizarMic()}
 function submit(text){text=text.trim();if(!text)return;marcarAtividade();addMessage('user',text);
  const b=bridge();
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
@@ -358,8 +377,7 @@ let ultimaAtividade=Date.now();
 function marcarAtividade(){ultimaAtividade=Date.now()}
 function brincadeiraOciosa(){
  if(reduce||demo)return;
- const b=$('#micbtn');
- if(b&&b.getAttribute('aria-pressed')==='true')return;    // não enquanto ouve
+ if(_ouvindo)return;                                       // não enquanto ouve
  const n=nucleo.numeros;
  if(n.estado!=='espera'||n.viajando)return;                // só parada, em espera
  if(Date.now()-ultimaAtividade<180000)return;              // 3 min sem nada
@@ -375,14 +393,21 @@ $('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if
 $('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;const b=bridge();if(b&&b.set_voz)b.set_voz(v)});
 // Trocar o MODELO (cérebro): auto / geral / código.
 $('#modelo').addEventListener('change',e=>{const b=bridge();if(b&&b.set_modelo)b.set_modelo(e.target.value)});
-// Microfone (clique-para-falar): um clique abre a escuta por uma fala; o
-// Python captura, responde e devolve ao repouso. Clicar de novo enquanto
-// ouve cancela. É o Python que confirma o estado via setEscutando; sem
-// Python conectado (demo), alterna só o visual para dar retorno.
+// Clique no microfone: a ação depende do MODO atual.
+//  mic    -> começa a escutar (e fica ouvindo até você mandar).
+//  enviar -> para de ouvir e manda o que captou.
+//  parar  -> interrompe a fala/geração da NEBELL.
 $('#micbtn').addEventListener('click',()=>{marcarAtividade();const br=bridge();
+ const modo=$('#micbtn').dataset.modo;
+ if(modo==='enviar'){if(br&&br.parar_escuta)br.parar_escuta();return}
+ if(modo==='parar'){if(br&&br.stop)br.stop();return}
  if(br&&br.escutar){br.escutar();return}
- const b=$('#micbtn');setEscutando(b.getAttribute('aria-pressed')!=='true')});
-$('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()});
+ setEscutando(!_ouvindo);                                   // demo sem Python
+});
+// X de cancelar a gravação (descarta, não manda).
+$('#cancelar').addEventListener('click',()=>{const br=bridge();
+ if(br&&br.cancelar_escuta)br.cancelar_escuta();
+ setEscutando(false);});
 // Histórico: abre/fecha o painel; fora dele, fecha.
 $('#hist').addEventListener('click',e=>{e.stopPropagation();const pop=$('#hist-pop');abrirHist(!!(pop&&pop.hidden))});
 document.addEventListener('click',e=>{if(!e.target.closest('.hist-wrap'))abrirHist(false)});

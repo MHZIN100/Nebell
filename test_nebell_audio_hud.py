@@ -912,7 +912,7 @@ class TestPagina(HudTest):
 
     def test_pagina_tem_as_pecas_que_o_python_usa(self):
         for peca in ["nebellUI", "setMics", "setStats", "setLevel",
-                     "pywebview", "b.ready", "set_mic", "#halt"]:
+                     "pywebview", "b.ready", "set_mic", "parar_escuta"]:
             self.assertIn(peca, H.HUD_HTML, peca)
 
     def test_pagina_tem_os_campos_novos(self):
@@ -1177,7 +1177,10 @@ class TestBotaoNaPagina(HudTest):
         self.assertIn('id="file"', H.HUD_HTML)
 
     def test_o_parar_continua_la(self):
-        self.assertIn('id="halt"', H.HUD_HTML)
+        # O botão vermelho separado saiu: o PARAR agora é um modo do
+        # próprio microfone (ic-parar), que aparece quando ela está falando.
+        self.assertIn("ic-parar", H.HUD_HTML)
+        self.assertIn('data-modo', H.HUD_HTML)
 
 
 # ============================================================
@@ -1471,7 +1474,7 @@ class TestEasterEggOcioso(unittest.TestCase):
     def test_tem_todas_as_guardas(self):
         # reduced-motion, demo, mic mudo, estado espera e tempo parado.
         trecho = self.app[self.app.index("brincadeiraOciosa"):]
-        for guarda in ("reduce||demo", "aria-pressed", "espera",
+        for guarda in ("reduce||demo", "_ouvindo", "espera",
                        "180000"):
             self.assertIn(guarda, trecho, guarda)
 

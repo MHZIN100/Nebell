@@ -761,6 +761,69 @@ class MicManager:
         finally:
             self.capturando.clear()
 
+    def gravar_ate_parar(self, parar_evento, maximo_seg=180, limpar=True):
+        """
+        Grava CONTINUAMENTE ate `parar_evento` ser setado (ou ate o teto
+        de `maximo_seg`). NAO corta no silencio -- serve para o modo em
+        que a pessoa clica para comecar e clica de novo para enviar, sem
+        medo de uma pausa para respirar encerrar a frase.
+
+        Devolve um AudioData (ou None se nao gravou nada).
+        """
+        import speech_recognition as sr
+
+        if not self.ready:
+            raise RuntimeError("microfone indisponível")
+
+        self.capturando.set()
+        pedacos = []
+
+        try:
+            with self.lock:
+                fonte = self.abrir_fluxo()
+
+                if KEEP_STREAM_OPEN and limpar:
+                    self.limpar_buffer(fonte)
+
+                fluxo = getattr(fonte, "stream", None)
+                if fluxo is None:
+                    return None
+
+                chunk = getattr(fonte, "CHUNK", 1024)
+                rate = fonte.SAMPLE_RATE
+                largura = fonte.SAMPLE_WIDTH
+                cb = self.on_nivel
+                teto = int(rate / max(chunk, 1) * maximo_seg)
+                lidos = 0
+
+                while not parar_evento.is_set() and lidos < teto:
+                    try:
+                        dados = fluxo.read(chunk)
+                    except Exception:
+                        break
+
+                    if not dados:
+                        break
+
+                    pedacos.append(dados)
+                    lidos += 1
+
+                    if cb is not None:
+                        try:
+                            cb(dados)
+                        except Exception:
+                            pass
+
+            if not pedacos:
+                return None
+
+            audio = sr.AudioData(b"".join(pedacos), rate, largura)
+            self.medir_nivel(audio)
+            return audio
+
+        finally:
+            self.capturando.clear()
+
     def _instalar_sonda_de_nivel(self, fonte):
         """
         Enquanto a escuta roda, espia cada pedaco de audio lido e manda

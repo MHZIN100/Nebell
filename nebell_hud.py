@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 31
+HUD_VERSAO = 32
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -93,7 +93,9 @@ class HudBridge:
         self.on_files = None
         self.on_set_esforco = None
         self.on_set_voz = None
-        self.on_escutar = None          # HUD->Python: clique no microfone (falar)
+        self.on_escutar = None          # HUD->Python: clique no microfone (começar a ouvir)
+        self.on_parar_escuta = None     # HUD->Python: enviar (para de gravar e manda)
+        self.on_cancelar_escuta = None  # HUD->Python: X (descarta a gravação)
         self.on_salvar = None           # HUD->Python: baixar um bloco de código
         self.on_set_modelo = None       # HUD->Python: escolher o modelo (auto/especialista)
         self.on_confirmar_troca = None  # HUD->Python: botões da confirmação de troca
@@ -157,14 +159,35 @@ class HudBridge:
             return True
 
         def escutar(self):
-            """O botao de microfone (clique-para-falar) da pagina: abre a
-            escuta por UMA fala; clicar de novo enquanto ouve cancela. A
-            NEBELL nao escuta sozinha fora disso."""
+            """O botao de microfone da pagina: comeca a OUVIR e grava ate
+            voce mandar. A NEBELL nao escuta sozinha fora disso."""
             bridge = self._bridge
 
             if bridge.on_escutar:
                 threading.Thread(
                     target=bridge.on_escutar, daemon=True
+                ).start()
+
+            return True
+
+        def parar_escuta(self):
+            """Botao ENVIAR: para de gravar e manda o que captou."""
+            bridge = self._bridge
+
+            if bridge.on_parar_escuta:
+                threading.Thread(
+                    target=bridge.on_parar_escuta, daemon=True
+                ).start()
+
+            return True
+
+        def cancelar_escuta(self):
+            """Botao X: para de gravar e descarta."""
+            bridge = self._bridge
+
+            if bridge.on_cancelar_escuta:
+                threading.Thread(
+                    target=bridge.on_cancelar_escuta, daemon=True
                 ).start()
 
             return True
