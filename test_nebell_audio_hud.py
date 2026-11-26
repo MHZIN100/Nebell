@@ -1414,7 +1414,7 @@ class TestFrontEndEmArquivos(unittest.TestCase):
         app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn("#file{", css)
         self.assertIn("NebellFormas", formas)
-        for marca in ("setVozes", "micmute", "setEsforco"):
+        for marca in ("setVozes", "setEscutando", "setEsforco"):
             self.assertIn(marca, app, marca)
 
     def test_costura_reproduz_o_html_embutido(self):

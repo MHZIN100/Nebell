@@ -70,11 +70,11 @@ button:hover{background:rgba(150,60,245,.2)}
 .iconbtn:hover{background:rgba(150,60,245,.2)}
 .iconbtn svg{width:20px;height:20px;display:block;pointer-events:none}
 .iconbtn:disabled{opacity:.45;cursor:default}
-/* O seletor de microfone é o <select> nativo deitado por cima do
-   ícone, invisível: o clique abre a lista do sistema de sempre, mas o
-   que se vê é só o ícone. */
-#micbtn{position:relative;overflow:hidden}
-#micbtn select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;max-width:none;cursor:pointer}
+/* Botão de microfone (clique-para-falar). Aceso = ouvindo agora: fica
+   verde e pulsa de leve para avisar que o microfone está aberto. */
+#micbtn[aria-pressed="true"]{border-color:#30e0a0;color:#8affd8;background:rgba(48,224,160,.14);animation:micpulsa 1.3s ease-in-out infinite}
+@keyframes micpulsa{0%,100%{box-shadow:0 0 0 0 rgba(48,224,160,.0)}50%{box-shadow:0 0 14px 1px rgba(48,224,160,.45)}}
+@media (prefers-reduced-motion:reduce){#micbtn[aria-pressed="true"]{animation:none}}
 #file{border-color:rgba(150,60,245,.5)}
 #file:hover{background:rgba(150,60,245,.2)}
 #file:disabled{opacity:.5;cursor:default}
@@ -122,9 +122,6 @@ select:focus{border-color:var(--acc)}
 .vozpick{margin-top:6px}
 .vozpick label{display:block;font-size:10px;letter-spacing:.2em;color:var(--dim);margin-bottom:5px}
 .vozpick select{width:100%;max-width:none;padding:9px 8px}
-/* Botão de silenciar o microfone: quando ligado (silenciado), fica
-   vermelho, como o botão de parar. */
-#micmute[aria-pressed="true"]{border-color:#ff4d7a;color:#ff9b9b;background:rgba(255,77,122,.12)}
 /* Histórico de conversas: painel que abre acima do botão do rodapé. */
 .hist-wrap{position:relative;display:inline-flex}
 .hist-pop{position:absolute;bottom:calc(100% + 10px);right:0;width:320px;max-height:340px;

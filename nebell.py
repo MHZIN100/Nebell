@@ -917,7 +917,7 @@ contador_de_falas = threading.Lock()
 busy_event = threading.Event()      # falando ou gerando: pode ser cortado
 cancel_event = threading.Event()    # o usuario mandou parar
 troca_de_voz = threading.Lock()
-mic_mudo = threading.Event()        # ligado = microfone silenciado pelo usuario
+escuta_armada = threading.Event()   # ligado = microfone aberto por UMA fala (clique-para-falar)
 _filler_cache = {}
 
 # Descarregar na ociosidade: depois de um tempo parado, soltamos o qwen
@@ -1402,14 +1402,14 @@ def feed_mic_level(pedaco):
     Nivel do MICROFONE para a HUD, enquanto a pessoa fala: as barras
     acompanham a voz de quem fala, nao so a da NEBELL.
 
-    Silencia quando o microfone esta mudo ou quando a NEBELL esta falando
-    (busy_event) -- senao o nivel do microfone se misturaria com o da
-    fala dela. Mesmo teto de ~quinze envios por segundo da fala, num
-    contador proprio. Nunca levanta: e chamada de dentro da thread de
-    audio e um erro aqui nao pode derrubar a escuta.
+    So manda nivel quando o microfone esta aberto (escuta armada) e a
+    NEBELL nao esta falando (busy_event) -- senao o nivel do microfone se
+    misturaria com o da fala dela. Mesmo teto de ~quinze envios por
+    segundo da fala, num contador proprio. Nunca levanta: e chamada de
+    dentro da thread de audio e um erro aqui nao pode derrubar a escuta.
     """
 
-    if estado.hud is None or mic_mudo.is_set() or busy_event.is_set():
+    if estado.hud is None or not escuta_armada.is_set() or busy_event.is_set():
         return
 
     agora = time.time()
@@ -2010,7 +2010,7 @@ def voice_barge_in_watcher():
         try:
             if not (busy_event.is_set() and estado.interaction_mode == "voice"
                     and microphone_available() and not cancel_event.is_set()
-                    and not mic_mudo.is_set()):
+                    and escuta_armada.is_set()):
                 time.sleep(0.1)
                 continue
 
@@ -9906,26 +9906,6 @@ def hud_set_voz(chave):
     ui_message("nebell", mensagem)
 
 
-def hud_set_mudo(ligado):
-    """O botão de silenciar o microfone, na janela."""
-    if ligado:
-        mic_mudo.set()
-        ui_state("idle")
-        print("\n[Microfone] Silenciado pelo usuário.")
-        ui_message("nebell",
-                   "Microfone silenciado. É só clicar de novo para religar.")
-    else:
-        mic_mudo.clear()
-        print("\n[Microfone] Religado pelo usuário.")
-        ui_message("nebell", "Microfone religado, estou ouvindo de novo.")
-
-    if estado.hud is not None:
-        try:
-            estado.hud.mostrar_mudo(mic_mudo.is_set())
-        except Exception:
-            nebell_log and nebell_log.engolido("hud: refletir mudo")
-
-
 def hud_ready():
     """A pagina abriu: manda o estado inicial de uma vez."""
     atualizar_estatisticas(uma_vez=True)
@@ -9936,90 +9916,117 @@ def hud_ready():
     estado.hud.set_esforco_nivel(esforco_atual[0])
     estado.hud.set_stats(voice=estado.VOZ_ROTULO)
 
-    # Seletor de voz (só as vozes que funcionam aqui) e estado do mudo.
+    # Seletor de voz (só as vozes que funcionam aqui) e microfone fechado:
+    # a escuta começa desarmada (clique-para-falar).
     try:
         estado.hud.set_vozes(vozes_disponiveis(), _chave_voz_atual())
-        estado.hud.mostrar_mudo(mic_mudo.is_set())
+        estado.hud.mostrar_escutando(escuta_armada.is_set())
     except Exception:
-        nebell_log and nebell_log.engolido("hud: estado inicial de voz/mudo")
+        nebell_log and nebell_log.engolido("hud: estado inicial de voz/escuta")
 
     ui_state("idle")
     ui_message("nebell", SAUDACAO)
 
 
+def _refletir_escuta():
+    """Mostra na janela se o microfone esta aberto ouvindo agora."""
+    if estado.hud is not None:
+        try:
+            estado.hud.mostrar_escutando(escuta_armada.is_set())
+        except Exception:
+            nebell_log and nebell_log.engolido("hud: refletir escuta")
+
+
+def desarmar_escuta(mensagem=None):
+    """Fecha o microfone e volta ao repouso. Opcionalmente avisa na janela."""
+    estava = escuta_armada.is_set()
+    escuta_armada.clear()
+
+    if estava:
+        _refletir_escuta()
+
+    ui_state("idle")
+
+    if mensagem:
+        ui_message("nebell", mensagem)
+
+
+def hud_escutar():
+    """
+    O botao de microfone da janela (clique-para-falar).
+
+    A NEBELL nao escuta sozinha: este clique abre o microfone por UMA
+    fala, como o ditado do ChatGPT. Clicar de novo enquanto ela ouve
+    cancela. Fora disso, a conversa e so por texto.
+    """
+    if escuta_armada.is_set():
+        desarmar_escuta()
+        print("\n[Microfone] Escuta cancelada pelo usuário.")
+        return
+
+    if not microphone_available():
+        if estado.mic_manager is not None:
+            try:
+                if estado.mic_manager.recover():
+                    on_microphone_change(estado.mic_manager)
+            except Exception:
+                nebell_log and nebell_log.engolido("microfone: recuperacao no clique")
+
+    if not microphone_available():
+        ui_message("nebell", "Não encontrei um microfone disponível, senhor.")
+        return
+
+    escuta_armada.set()
+    _refletir_escuta()
+    ui_state("listening")
+    print("\n[Microfone] Escutando (uma fala).")
+
+
 def voice_listen_loop():
     """
-    Escuta e enfileira os pedidos.
-
-    Sem exigir a palavra de ativacao: qualquer fala vira pedido, e dizer
-    "Nebell" na frente e opcional. Fica parado enquanto o NEBELL fala,
-    para o microfone nao captar a propria voz dele.
+    Escuta clique-para-falar: fica em silencio ate o usuario clicar no
+    microfone (hud_escutar arma a escuta). Ai captura UMA fala, enfileira
+    e volta ao repouso. Nao ha mais escuta continua nem palavra de
+    ativacao -- o microfone so abre quando a pessoa pede.
     """
-    tentou_recuperar_em = 0.0
-
     while not shutdown_event.is_set():
         try:
-            # Microfone silenciado pelo usuário (botão de mudo): não
-            # escuta nada enquanto estiver assim. O texto digitado segue
-            # funcionando normalmente.
-            if mic_mudo.is_set():
-                time.sleep(0.25)
+            # Microfone fechado (o normal): a conversa e por texto. Só
+            # abre quando o botão de microfone é clicado.
+            if not escuta_armada.is_set():
+                time.sleep(0.12)
                 continue
 
-            # Nao escuta enquanto ele fala nem logo depois: o microfone
-            # capta o alto-falante e ele respondia a si mesmo.
+            # Nao escuta enquanto ele fala: o microfone capta o
+            # alto-falante e ele responderia a si mesmo.
             if busy_event.is_set() or falando_agora.is_set():
-                time.sleep(0.2)
+                time.sleep(0.12)
                 continue
 
-            # Sem microfone: nao desiste da sessao. Antes o laco so
-            # dormia, e um fone tirado no meio (ou um microfone que
-            # nao abriu na hora da abertura) deixava a escuta morta
-            # para sempre, mesmo depois de religar o aparelho.
             if not microphone_available():
-                agora = time.time()
-
-                if (
-                    estado.mic_manager is not None
-                    and agora - tentou_recuperar_em >= SEGUNDOS_PARA_TENTAR_O_MIC
-                ):
-                    tentou_recuperar_em = agora
-
-                    try:
-                        if estado.mic_manager.recover():
-                            on_microphone_change(estado.mic_manager)
-                    except Exception:
-                        nebell_log and nebell_log.engolido("microfone: recuperacao automatica")
-
-                time.sleep(0.5)
+                desarmar_escuta("Perdi o microfone, senhor. É só clicar de novo.")
                 continue
 
-            desde_a_fala = time.time() - ultima_fala_em[0]
+            ui_state("listening")
+            ouvido = listen(timeout=8, phrase_time_limit=18)
 
-            if desde_a_fala < ECO_CARENCIA:
-                time.sleep(ECO_CARENCIA - desde_a_fala)
+            # Clicou de novo no meio = cancelou: descarta o que veio.
+            if not escuta_armada.is_set():
+                ui_state("idle")
                 continue
 
-            ui_state("listening" if not REQUIRE_WAKE_WORD else "idle")
-            ouvido = listen(timeout=6, phrase_time_limit=18)
+            # Uma fala por clique: fecha o microfone e volta ao repouso.
+            escuta_armada.clear()
+            _refletir_escuta()
+            ui_state("idle")
 
             if not ouvido or busy_event.is_set():
                 continue
 
-            pedido = extrair_pedido(ouvido)
+            pedido = (extrair_pedido(ouvido) or "").strip()
 
-            if pedido is None:
+            if not pedido:
                 continue
-
-            if pedido == "":
-                # Disse só o nome: confirma e espera o pedido.
-                acknowledge_wake()
-                ui_state("listening")
-                seguinte = listen(timeout=7, phrase_time_limit=20)
-                pedido = (seguinte or "").strip()
-
-                if not pedido:
-                    continue
 
             controle = parse_voice_command(pedido)
 
@@ -10225,7 +10232,7 @@ def run_hud_mode():
     estado.hud.on_stop = hud_stop
     estado.hud.on_set_esforco = hud_set_esforco
     estado.hud.on_set_voz = hud_set_voz
-    estado.hud.on_set_mudo = hud_set_mudo
+    estado.hud.on_escutar = hud_escutar
     estado.hud.on_abrir_conversa = hud_abrir_conversa
     estado.hud.on_nova_conversa = hud_nova_conversa
     estado.hud.obter_conversas = listar_conversas

@@ -3394,33 +3394,36 @@ class TestModoHud(NebellTest):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
         J.estado._mic_level_sent_at = 0
-        J.mic_mudo.clear()
         J.busy_event.clear()
-        J.feed_mic_level(quadro)
+        J.escuta_armada.set()
+        try:
+            J.feed_mic_level(quadro)
+        finally:
+            J.escuta_armada.clear()
         self.hud.set_level.assert_called_once()
 
-    def test_mic_mudo_nao_manda_nivel(self):
+    def test_mic_fechado_nao_manda_nivel(self):
+        # Clique-para-falar: com a escuta desarmada (microfone fechado),
+        # o nivel nao vai para a janela.
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
         J.estado._mic_level_sent_at = 0
         J.busy_event.clear()
-        J.mic_mudo.set()
-        try:
-            J.feed_mic_level(quadro)
-        finally:
-            J.mic_mudo.clear()
+        J.escuta_armada.clear()
+        J.feed_mic_level(quadro)
         self.hud.set_level.assert_not_called()
 
     def test_nivel_do_mic_cala_enquanto_a_nebell_fala(self):
         import struct
         quadro = struct.pack("<8h", *([9000] * 8))
         J.estado._mic_level_sent_at = 0
-        J.mic_mudo.clear()
+        J.escuta_armada.set()
         J.busy_event.set()
         try:
             J.feed_mic_level(quadro)
         finally:
             J.busy_event.clear()
+            J.escuta_armada.clear()
         self.hud.set_level.assert_not_called()
 
     def test_troca_de_microfone_pela_janela(self):
@@ -7063,18 +7066,21 @@ class TestEscutaNaoDesiste(NebellTest):
         return thread
 
     def test_sem_microfone_tenta_reabrir(self):
+        # Clique-para-falar: ao clicar no microfone sem aparelho pronto,
+        # a NEBELL tenta reabri-lo antes de desistir.
         gerente = mock.Mock()
         gerente.ready = False
         gerente.recover.return_value = False
 
-        with mock.patch.object(J.estado, "mic_manager", gerente), \
-                mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0):
-            self.rodar_um_pouco()
+        with mock.patch.object(J.estado, "mic_manager", gerente):
+            J.escuta_armada.clear()
+            J.hud_escutar()
 
         self.assertTrue(
             gerente.recover.called,
-            "a escuta nem tentou reabrir o microfone",
+            "o clique no microfone nem tentou reabrir o aparelho",
         )
+        self.assertFalse(J.escuta_armada.is_set())
 
     def test_quando_reabre_a_janela_e_avisada(self):
         gerente = mock.Mock()
@@ -7082,34 +7088,24 @@ class TestEscutaNaoDesiste(NebellTest):
         gerente.recover.return_value = True
 
         with mock.patch.object(J.estado, "mic_manager", gerente), \
-                mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0), \
                 mock.patch.object(J, "on_microphone_change") as avisar:
-            self.rodar_um_pouco()
+            J.escuta_armada.clear()
+            J.hud_escutar()
 
         self.assertTrue(avisar.called)
 
-    def test_nao_tenta_a_toda_hora(self):
-        gerente = mock.Mock()
-        gerente.ready = False
-        gerente.recover.return_value = False
-
-        # Com a espera normal de 10 s, uma passada curta tenta uma vez.
-        with mock.patch.object(J.estado, "mic_manager", gerente):
-            self.rodar_um_pouco(segundos=0.8)
-
-        self.assertLessEqual(gerente.recover.call_count, 1)
-
-    def test_erro_ao_reabrir_nao_derruba_a_escuta(self):
+    def test_erro_ao_reabrir_nao_derruba(self):
+        # Um erro ao reabrir o microfone no clique nao pode estourar.
         gerente = mock.Mock()
         gerente.ready = False
         gerente.recover.side_effect = RuntimeError("driver caiu")
 
-        with mock.patch.object(J.estado, "mic_manager", gerente), \
-                mock.patch.object(J, "SEGUNDOS_PARA_TENTAR_O_MIC", 0.0):
-            thread = self.rodar_um_pouco()
+        with mock.patch.object(J.estado, "mic_manager", gerente):
+            J.escuta_armada.clear()
+            J.hud_escutar()      # não deve levantar
 
-        self.assertFalse(thread.is_alive())
         self.assertTrue(gerente.recover.called)
+        self.assertFalse(J.escuta_armada.is_set())
 
     def test_a_escuta_sobe_sem_depender_do_microfone(self):
         fonte = Path(J.__file__).read_text(encoding="utf-8")

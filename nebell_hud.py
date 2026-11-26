@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 22
+HUD_VERSAO = 23
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -93,7 +93,7 @@ class HudBridge:
         self.on_files = None
         self.on_set_esforco = None
         self.on_set_voz = None
-        self.on_set_mudo = None
+        self.on_escutar = None          # HUD->Python: clique no microfone (falar)
         self.on_abrir_conversa = None   # HUD->Python: continuar uma conversa
         self.on_nova_conversa = None    # HUD->Python: comecar uma conversa nova
         self.obter_conversas = None     # HUD->Python: lista para o historico
@@ -153,13 +153,15 @@ class HudBridge:
 
             return True
 
-        def set_mudo(self, ligado):
-            """O botao de silenciar o microfone, na pagina."""
+        def escutar(self):
+            """O botao de microfone (clique-para-falar) da pagina: abre a
+            escuta por UMA fala; clicar de novo enquanto ouve cancela. A
+            NEBELL nao escuta sozinha fora disso."""
             bridge = self._bridge
 
-            if bridge.on_set_mudo:
+            if bridge.on_escutar:
                 threading.Thread(
-                    target=bridge.on_set_mudo, args=(bool(ligado),), daemon=True
+                    target=bridge.on_escutar, daemon=True
                 ).start()
 
             return True
@@ -514,9 +516,9 @@ class HudBridge:
         """Marca no seletor qual voz esta em uso agora."""
         self.call("setVozAtual", str(chave or ""))
 
-    def mostrar_mudo(self, ligado):
-        """Reflete na janela se o microfone esta silenciado."""
-        self.call("setMudo", bool(ligado))
+    def mostrar_escutando(self, ligado):
+        """Reflete na janela se o microfone esta aberto ouvindo agora."""
+        self.call("setEscutando", bool(ligado))
 
     def set_conversas(self, lista):
         """Entrega a lista de conversas antigas ao painel de historico."""

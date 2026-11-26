@@ -114,14 +114,14 @@ function setStats(o){for(const k of['cpu','ram','net','gpu']){if(o[k]==null)cont
  if(o.mic)$('#micV').textContent=o.mic;
  if(o.location)$('#loc').textContent=o.location}
 function setMics(list,current){const sel=$('#mic');if(!Array.isArray(list))return;
- sel.textContent='';const auto=document.createElement('option');auto.value='auto';auto.textContent='MICROFONE: AUTOMÁTICO';sel.append(auto);
+ sel.textContent='';const auto=document.createElement('option');auto.value='auto';auto.textContent='AUTOMÁTICO';sel.append(auto);
  for(const d of list){const o=document.createElement('option');o.value=String(d.index);
   o.textContent=(d.is_headset?'FONE · ':'')+(d.name||('entrada '+d.index));sel.append(o)}
  if(current!=null)sel.value=String(current);atualizarTituloMic()}
-// Sem rotulo visivel, o nome do microfone vive no tooltip do icone.
-function atualizarTituloMic(){const sel=$('#mic'),btn=$('#micbtn');if(!sel||!btn)return;
- const op=sel.options[sel.selectedIndex];const t=op?op.textContent:'';
- btn.title=t?('Microfone: '+t):'Microfone de entrada'}
+// O seletor de microfone agora mora no painel SISTEMA, com rótulo
+// próprio; o nome completo do aparelho fica no tooltip do próprio select.
+function atualizarTituloMic(){const sel=$('#mic');if(!sel)return;
+ const op=sel.options[sel.selectedIndex];sel.title=op?op.textContent:''}
 // Seletor de voz: o Python manda a lista (só as vozes que funcionam
 // nesta máquina) e qual está em uso. Trocar aqui muda a voz na hora.
 function setVozes(list,atual){const sel=$('#vozSel');if(!sel||!Array.isArray(list))return;
@@ -129,11 +129,14 @@ function setVozes(list,atual){const sel=$('#vozSel');if(!sel||!Array.isArray(lis
  for(const v of list){const o=document.createElement('option');o.value=v.chave||'';o.textContent=v.rotulo||v.chave||'voz';sel.append(o)}
  if(atual!=null&&atual!=='')sel.value=String(atual);}
 function setVozAtual(ch){const sel=$('#vozSel');if(sel&&ch!=null&&ch!=='')sel.value=String(ch)}
-// Botão de silenciar o microfone. O Python é quem manda o estado de
-// verdade (inclusive na abertura), então o visual segue o aria-pressed.
-function setMudo(on){const b=$('#micmute');if(!b)return;
+// Botão de microfone (clique-para-falar). A NEBELL NÃO escuta por conta
+// própria: ela só abre o microfone por uma fala quando este botão é
+// clicado, igual ao ditado do ChatGPT. O Python é quem manda o estado de
+// verdade (ligou a escuta / terminou de capturar), e o visual segue o
+// aria-pressed: aceso = ouvindo agora.
+function setEscutando(on){const b=$('#micbtn');if(!b)return;
  b.setAttribute('aria-pressed',on?'true':'false');
- b.title=on?'Microfone silenciado — clique para religar':'Silenciar o microfone';}
+ b.title=on?'Ouvindo… clique para parar':'Clique para falar';}
 function submit(text){text=text.trim();if(!text)return;marcarAtividade();addMessage('user',text);
  const b=bridge();
  if(b&&b.send){demo=false;setState('pensando');b.send(text)}
@@ -175,7 +178,7 @@ const api={
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
  setLevel:v=>nucleo.setLevel(v),
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
- setVozes,setVozAtual,setMudo,setConversas:renderConversas,limparLog,
+ setVozes,setVozAtual,setEscutando,setConversas:renderConversas,limparLog,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
 
@@ -205,8 +208,8 @@ let ultimaAtividade=Date.now();
 function marcarAtividade(){ultimaAtividade=Date.now()}
 function brincadeiraOciosa(){
  if(reduce||demo)return;
- const b=$('#micmute');
- if(!b||b.getAttribute('aria-pressed')!=='true')return;   // só com o mic mudo
+ const b=$('#micbtn');
+ if(b&&b.getAttribute('aria-pressed')==='true')return;    // não enquanto ouve
  const n=nucleo.numeros;
  if(n.estado!=='espera'||n.viajando)return;                // só parada, em espera
  if(Date.now()-ultimaAtividade<180000)return;              // 3 min sem nada
@@ -220,9 +223,13 @@ $('#txt').addEventListener('keydown',e=>{marcarAtividade();if(e.key==='Enter'){s
 $('#mic').addEventListener('change',e=>{atualizarTituloMic();const b=bridge();if(b&&b.set_mic)b.set_mic(e.target.value)});
 // Trocar a voz pelo seletor do painel SISTEMA.
 $('#vozSel').addEventListener('change',e=>{const v=e.target.value;if(!v)return;const b=bridge();if(b&&b.set_voz)b.set_voz(v)});
-// Silenciar / religar o microfone. Lê o estado atual do próprio botão
-// e inverte, para ficar sempre em sincronia com o que o Python mandou.
-$('#micmute').addEventListener('click',()=>{const b=$('#micmute');const novo=b.getAttribute('aria-pressed')!=='true';setMudo(novo);const br=bridge();if(br&&br.set_mudo)br.set_mudo(novo)});
+// Microfone (clique-para-falar): um clique abre a escuta por uma fala; o
+// Python captura, responde e devolve ao repouso. Clicar de novo enquanto
+// ouve cancela. É o Python que confirma o estado via setEscutando; sem
+// Python conectado (demo), alterna só o visual para dar retorno.
+$('#micbtn').addEventListener('click',()=>{marcarAtividade();const br=bridge();
+ if(br&&br.escutar){br.escutar();return}
+ const b=$('#micbtn');setEscutando(b.getAttribute('aria-pressed')!=='true')});
 $('#halt').addEventListener('click',()=>{const b=bridge();if(b&&b.stop)b.stop()});
 // Histórico: abre/fecha o painel; fora dele, fecha.
 $('#hist').addEventListener('click',e=>{e.stopPropagation();const pop=$('#hist-pop');abrirHist(!!(pop&&pop.hidden))});
