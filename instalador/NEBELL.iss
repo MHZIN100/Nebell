@@ -59,11 +59,12 @@ Source: "{#AppDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs;
   Excludes: ".venv,.venv_antigo,__pycache__,.git,.idea,.vscode,_lixo,hud,audio_temp,backup,whisper_models,*.pyc,*.pyo,*.zip,*.db-wal,*.db-shm,microfone.json,nebell_dev.log,index.anterior.html,instalador\Saida"
 
 [Icons]
-; Todos os atalhos abrem o NEBELL.vbs (sem console) e usam o ícone da NEBELL.
-Name: "{group}\{#Nome}";                 Filename: "{win}\wscript.exe"; Parameters: """{app}\NEBELL.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"
+; Os atalhos abrem o NEBELL.exe (lançador leve, sem console, com o ícone
+; embutido). Gere o NEBELL.exe antes, com app_exe\build_exe.bat.
+Name: "{group}\{#Nome}";                 Filename: "{app}\NEBELL.exe"; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"
 Name: "{group}\Desinstalar a {#Nome}";   Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#Nome}";           Filename: "{win}\wscript.exe"; Parameters: """{app}\NEBELL.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"; Tasks: desktopicon
-Name: "{userstartup}\{#Nome}";           Filename: "{win}\wscript.exe"; Parameters: """{app}\NEBELL.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"; Tasks: startupicon
+Name: "{autodesktop}\{#Nome}";           Filename: "{app}\NEBELL.exe"; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"; Tasks: desktopicon
+Name: "{userstartup}\{#Nome}";           Filename: "{app}\NEBELL.exe"; WorkingDir: "{app}"; IconFilename: "{app}\nebell.ico"; Tasks: startupicon
 
 [Run]
 ; Ao terminar, o assistente oferece (caixas marcáveis) montar o ambiente
@@ -72,7 +73,7 @@ Name: "{userstartup}\{#Nome}";           Filename: "{win}\wscript.exe"; Paramete
 Filename: "{app}\Instalar.bat"; WorkingDir: "{app}"; \
   Description: "Montar o ambiente da NEBELL agora (baixa os modelos — pode demorar)"; \
   Flags: postinstall waituntilterminated
-Filename: "{win}\wscript.exe"; Parameters: """{app}\NEBELL.vbs"""; WorkingDir: "{app}"; \
+Filename: "{app}\NEBELL.exe"; WorkingDir: "{app}"; \
   Description: "Abrir a {#Nome} ao terminar"; Flags: postinstall nowait skipifsilent unchecked
 
 [Code]

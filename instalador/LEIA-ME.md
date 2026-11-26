@@ -9,39 +9,47 @@ O que foi preparado (já está no projeto):
 
 - **`nebell.ico`** — o ícone da NEBELL (o giroscópio violeta), em todos
   os tamanhos.
-- **`NEBELL.vbs`** — abre a NEBELL **sem console** (usa o `pythonw` do
-  `.venv`). É o que os atalhos chamam.
+- **`app_exe\launcher.py`** + **`app_exe\build_exe.bat`** — geram o
+  **`NEBELL.exe`**, um lançador LEVE: abre a NEBELL sem console, vira
+  ícone e é fixável na barra. (Não empacota a NEBELL inteira — é só o
+  atalho/ícone, bem mais confiável que um .exe gigante.)
+- **`NEBELL.vbs`** — alternativa sem compilar nada: também abre sem
+  console. Serve de reserva se você não quiser gerar o .exe.
 - **`nebell_app.py`** — identidade de app no Windows (para a barra
   agrupar sob o ícone da NEBELL) e o **ícone na bandeja** com menu
-  rápido (Mostrar · Falar agora · Nova conversa · Sair). É opcional e à
-  prova de falha: sem a biblioteca `pystray`, a NEBELL abre igual, só
-  sem o ícone da bandeja.
+  rápido (Mostrar · Falar agora · Nova conversa · Sair). Opcional e à
+  prova de falha: sem a `pystray`, a NEBELL abre igual, só sem a bandeja.
 - **`instalador\NEBELL.iss`** + **`build_instalador.bat`** — geram o
-  instalador bonito (`NEBELL-Setup.exe`).
+  instalador bonito (`NEBELL-Setup.exe`), cujos atalhos apontam para o
+  `NEBELL.exe`.
 
 ## Passo a passo (na sua máquina Windows)
 
-### 1. Ícone na bandeja
-Já funciona assim que a `pystray` estiver instalada. O `Instalar.bat`
-agora a instala (ela é opcional; se falhar, não tem problema). Para
-instalar só ela, na pasta da NEBELL:
+### 1. Gerar o NEBELL.exe (o app)
+Dê dois cliques em **`app_exe\build_exe.bat`**. Ele instala o PyInstaller
+(se faltar) e deixa o **`NEBELL.exe`** na pasta da NEBELL. Dois cliques
+nele abrem a NEBELL **sem console**.
 
-```
-.venv\Scripts\python.exe -m pip install pystray
-```
-
-### 2. Abrir sem console
-Dê dois cliques em **`NEBELL.vbs`** (na pasta da NEBELL). A interface
-abre direto, sem a janela preta.
+> Sem querer compilar? Use o **`NEBELL.vbs`** no lugar — abre do mesmo
+> jeito, só não é um .exe.
 
 > O OCR (ler texto dentro de imagens) agora é decidido pelo
 > `nebell_config.json` (`"usar_tesseract"`), não mais por uma pergunta no
 > arranque. Para deixar o app leve, use `"usar_tesseract": false`.
 
-### 3. Gerar o instalador bonito
-1. Instale o **Inno Setup**: https://jrsoftware.org/isdl.php
-2. Dê dois cliques em **`instalador\build_instalador.bat`**.
-3. Sai **`instalador\Saida\NEBELL-Setup.exe`** — é esse arquivo que você
+### 2. Ícone na bandeja
+Já funciona assim que a `pystray` estiver instalada (o `Instalar.bat`
+agora a instala; é opcional). Para instalar só ela:
+
+```
+.venv\Scripts\python.exe -m pip install pystray
+```
+
+### 3. Gerar o instalador bonito (o "setup")
+1. Gere o `NEBELL.exe` antes (passo 1) — os atalhos apontam para ele.
+2. Instale o **Inno Setup**: https://jrsoftware.org/isdl.php
+3. Dê dois cliques em **`instalador\build_instalador.bat`**.
+4. Sai **`instalador\Saida\NEBELL-Setup.exe`** — é esse arquivo que você
    (ou outra pessoa) roda para instalar a NEBELL com atalhos e ícone.
 
 O instalador copia a NEBELL para a sua pasta de usuário, monta o

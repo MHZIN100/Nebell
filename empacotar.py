@@ -41,6 +41,8 @@ PASTAS_FORA = {
     ".git", ".idea", ".vscode", "_lixo",
     # Saída do compilador do instalador (o .exe gerado); não re-empacota.
     "Saida",
+    # Rascunhos do PyInstaller ao gerar o NEBELL.exe.
+    "build", "dist",
     # A pasta hud/ e gerada de hud_fonte/ no arranque. So a fonte entra
     # no pacote; o nebell_hud.py recria hud/ na primeira abertura.
     "hud",

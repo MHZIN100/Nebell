@@ -9,6 +9,17 @@ echo   GERANDO O INSTALADOR DA N.E.B.E.L.L.
 echo ========================================
 echo.
 
+rem Os atalhos do instalador apontam para o NEBELL.exe. Se ele ainda nao
+rem foi gerado, avisa (o instalador funcionaria, mas os atalhos ficariam
+rem quebrados ate voce gerar o .exe).
+if not exist "..\NEBELL.exe" (
+  echo AVISO: nao achei o NEBELL.exe na pasta da NEBELL.
+  echo Gere-o primeiro com  app_exe\build_exe.bat  e rode isto de novo.
+  echo.
+  choice /c SN /n /m "Continuar mesmo assim? (S/N): "
+  if errorlevel 2 exit /b 1
+)
+
 rem Procura o compilador do Inno Setup (ISCC.exe) nos lugares de sempre.
 set "ISCC="
 for %%P in (
