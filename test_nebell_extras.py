@@ -1230,14 +1230,11 @@ class TestAvaliarHardware(unittest.TestCase):
     def test_foto_vazia_nao_estoura(self):
         self.assertEqual(S.avaliar({}), [])
 
-    def test_memoria_no_limite(self):
-        achados = S.avaliar({"memoria": {"porcento": 95, "livre_mb": 300}})
-        self.assertEqual(achados[0][0], "memoria")
-        self.assertEqual(achados[0][1], "perigo")
-
-    def test_memoria_pouca_mesmo_com_porcento_baixo(self):
-        achados = S.avaliar({"memoria": {"porcento": 60, "livre_mb": 200}})
-        self.assertTrue(achados)
+    def test_memoria_nao_avisa_mais(self):
+        # O aviso de memória foi removido (em 8 GB a RAM vive no teto e o
+        # painel já mostra). avaliar() não deve mais devolver "memoria".
+        self.assertEqual(S.avaliar({"memoria": {"porcento": 95, "livre_mb": 300}}), [])
+        self.assertEqual(S.avaliar({"memoria": {"porcento": 60, "livre_mb": 200}}), [])
 
     def test_disco_quase_cheio_e_perigo(self):
         achados = S.avaliar(
@@ -1334,7 +1331,8 @@ class TestSentinelaVolta(unittest.TestCase):
         for segundo in range(1001, 1006):
             total += len(self.conferir(segundo))
 
-        self.assertGreaterEqual(total, 4)
+        # disco + gpu_temperatura + gpu_vram (a memória não avisa mais).
+        self.assertGreaterEqual(total, 3)
 
     def test_mesmo_assunto_fica_quieto_por_vinte_minutos(self):
         self.conferir(1000)
@@ -1351,14 +1349,19 @@ class TestSentinelaVolta(unittest.TestCase):
         self.assertTrue(self.conferir(1001 + S.SILENCIO_POR_ASSUNTO + 1))
 
     def test_problema_resolvido_rearma_o_assunto(self):
+        # Usa o disco como exemplo (a memória não avisa mais).
+        self.foto = {"disco": {"caminho": "C:", "livre_gb": 2,
+                               "total_gb": 476, "porcento": 99}}
         self.conferir(1000)
         self.conferir(1001)
         self.conferir(1002)
 
-        self.foto = {"memoria": {"porcento": 30, "livre_mb": 5000}}
+        self.foto = {"disco": {"caminho": "C:", "livre_gb": 300,
+                               "total_gb": 476, "porcento": 37}}
         self.conferir(1003)
 
-        self.foto = {"memoria": {"porcento": 95, "livre_mb": 300}}
+        self.foto = {"disco": {"caminho": "C:", "livre_gb": 2,
+                               "total_gb": 476, "porcento": 99}}
         self.assertTrue(self.conferir(1004))
 
     def test_perigo_sai_antes_do_aviso(self):
@@ -1366,11 +1369,15 @@ class TestSentinelaVolta(unittest.TestCase):
         self.conferir(1001)
         self.assertEqual(self.avisos[0][0], "perigo")
 
-    def test_memoria_traz_quem_esta_pesando(self):
+    def test_memoria_nao_fala_mais(self):
+        # Removido o aviso de memória, nem o aviso nem o "o que está
+        # pesando" aparecem, mesmo com a RAM no teto.
+        self.foto = {"memoria": {"porcento": 97, "livre_mb": 200}}
         self.conferir(1000)
         self.conferir(1001)
-        tudo = " ".join(frase for _, frase in self.avisos)
-        self.assertIn("chrome.exe", tudo)
+        tudo = " ".join(frase for _, frase in self.avisos).lower()
+        self.assertNotIn("memória", tudo)
+        self.assertNotIn("chrome.exe", tudo)
 
     def test_falha_do_aviso_nao_derruba_a_volta(self):
         self.sentinela.ao_avisar = lambda frase, gravidade: 1 / 0
@@ -1449,9 +1456,11 @@ class TestMedidas(unittest.TestCase):
         self.assertIn("psutil", texto)
 
     def test_relatorio_aponta_o_problema(self):
+        # A memória não avisa mais; o disco cheio ainda aponta o problema.
         with mock.patch.object(S, "medir_tudo", lambda: {
-            "memoria": {"porcento": 96, "livre_mb": 200, "total_mb": 8000},
-            "disco": None, "cpu": None, "gpu": None, "bateria": None,
+            "disco": {"caminho": "C:", "livre_gb": 2, "total_gb": 476,
+                      "porcento": 99},
+            "memoria": None, "cpu": None, "gpu": None, "bateria": None,
             "quando": 0,
         }):
             texto = S.Sentinela(log=lambda *a: None).relatorio()

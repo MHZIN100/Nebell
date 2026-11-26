@@ -312,19 +312,10 @@ def avaliar(foto, limites=None):
     limites = {**LIMITES, **(limites or {})}
     achados = []
 
-    memoria = foto.get("memoria") or {}
-
-    if memoria:
-        if (memoria.get("porcento") or 0) >= limites["memoria_porcento"] or (
-            memoria.get("livre_mb") is not None
-            and memoria["livre_mb"] <= limites["memoria_livre_mb"]
-        ):
-            achados.append((
-                "memoria", "perigo",
-                f"A memória está em {memoria.get('porcento', '?')} por cento, "
-                f"com {memoria.get('livre_mb', '?')} megabytes livres. "
-                "Se abrir mais coisa a máquina vai travar."
-            ))
+    # Aviso de memória REMOVIDO de propósito: em máquina de 8 GB a RAM
+    # vive perto do teto, então o aviso falado disparava o tempo todo. O
+    # usuário acompanha a memória direto no painel (barra MEMÓRIA), que é
+    # mais claro e não interrompe. O medidor continua; só não fala mais.
 
     disco = foto.get("disco") or {}
 
