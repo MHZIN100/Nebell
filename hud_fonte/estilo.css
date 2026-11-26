@@ -124,8 +124,14 @@ main{display:grid;grid-template-columns:252px 1fr 312px;gap:17px;min-height:0}
 .msg code{font-family:"Share Tech Mono",monospace;background:rgba(166,107,255,.1);
  border:1px solid var(--line-2);border-radius:5px;padding:0 5px}
 .msg ul{margin:6px 0;padding-left:18px;list-style:none}
-.msg li{margin:3px 0;position:relative;padding-left:2px}
-.msg li::before{content:"";position:absolute;left:-14px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--acc);opacity:.85}
+.msg ul li{margin:3px 0;position:relative;padding-left:2px}
+.msg ul li::before{content:"";position:absolute;left:-14px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--acc);opacity:.85}
+.msg ol{margin:6px 0;padding-left:24px;list-style:decimal}
+.msg ol li{margin:3px 0}
+.msg ol li::marker{color:var(--acc-2)}
+.msg .titulo{margin:8px 0 4px;font:600 13px Orbitron,sans-serif;letter-spacing:.04em;color:var(--acc-2)}
+.msg .titulo:first-child{margin-top:0}
+.msg .ref{color:var(--acc-2);text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:2px}
 .codebloco{position:relative;margin:9px 0;border:1px solid var(--line-2);border-radius:9px;background:rgba(4,3,12,.6);overflow:hidden}
 .codebloco pre{margin:0;padding:12px 14px;overflow:auto;max-height:280px}
 .codebloco code{display:block;background:none;border:0;padding:0;white-space:pre;color:var(--text)}

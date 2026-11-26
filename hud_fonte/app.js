@@ -28,9 +28,14 @@ function setState(s){
 // punhado de marcacoes: bloco ```, `codigo`, **negrito**, *italico* e
 // listas "- ". Qualquer outra coisa sai como texto visivel, nunca
 // executada.
+// Marcações EM LINHA: `código`, **negrito**, __negrito__, *itálico* e
+// [texto](link) -> só o texto. Tudo vira nó de DOM (textContent), nunca
+// innerHTML — o texto é do MODELO, então renderizar como HTML seria XSS.
+// (O _itálico_ com um sublinhado só fica de fora de propósito: quebraria
+// nomes como nebell_config.)
 function mdInline(alvo,texto){
  let resto=String(texto);
- const re=/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/;
+ const re=/(`[^`]+`|\*\*[^*]+?\*\*|__[^_]+?__|\*[^*\n]+?\*|\[[^\]]+\]\([^)]+\))/;
  while(resto){
   const m=re.exec(resto);
   if(!m){alvo.appendChild(document.createTextNode(resto));break}
@@ -38,6 +43,14 @@ function mdInline(alvo,texto){
   const tok=m[0];let el;
   if(tok[0]==='`'){el=document.createElement('code');el.textContent=tok.slice(1,-1)}
   else if(tok.slice(0,2)==='**'){el=document.createElement('strong');el.textContent=tok.slice(2,-2)}
+  else if(tok.slice(0,2)==='__'){el=document.createElement('strong');el.textContent=tok.slice(2,-2)}
+  else if(tok[0]==='['){
+   // Só http(s) vira texto limpo do link. Esquemas perigosos
+   // (javascript:, data:…) saem LITERAIS, para a pessoa ver o truque.
+   const u=tok.slice(tok.indexOf('](')+2,-1);
+   if(/^https?:\/\//i.test(u)){el=document.createElement('span');el.className='ref';el.textContent=tok.slice(1,tok.indexOf(']'))}
+   else{el=document.createTextNode(tok)}
+  }
   else{el=document.createElement('em');el.textContent=tok.slice(1,-1)}
   alvo.appendChild(el);
   resto=resto.slice(m.index+tok.length);
@@ -62,14 +75,27 @@ function renderMarkdown(alvo,texto){
    alvo.appendChild(mdBlocoDeCodigo(corpo));continue;
   }
   if(!partes[i])continue;
-  let lista=null;
+  let lista=null,tipo=null;   // tipo: 'ul' (marcadores) ou 'ol' (numerada)
   for(const linha of partes[i].split('\n')){
-   if(/^\s*-\s+/.test(linha)){
-    if(!lista){lista=document.createElement('ul');alvo.appendChild(lista)}
-    const li=document.createElement('li');mdInline(li,linha.replace(/^\s*-\s+/,''));lista.appendChild(li);continue;
+   let m;
+   // Título (# .. ######): vira uma linha destacada.
+   if(m=/^\s*#{1,6}\s+(.*)$/.exec(linha)){
+    lista=null;tipo=null;
+    const h=document.createElement('div');h.className='titulo';mdInline(h,m[1]);alvo.appendChild(h);continue;
    }
-   lista=null;
+   // Lista numerada (1. / 1) ...).
+   if(m=/^\s*\d+[.)]\s+(.*)$/.exec(linha)){
+    if(tipo!=='ol'){lista=document.createElement('ol');tipo='ol';alvo.appendChild(lista)}
+    const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue;
+   }
+   // Lista com marcador (-, *, +, •).
+   if(m=/^\s*[-*+•]\s+(.*)$/.exec(linha)){
+    if(tipo!=='ul'){lista=document.createElement('ul');tipo='ul';alvo.appendChild(lista)}
+    const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue;
+   }
+   // Linha em branco: não quebra a lista em andamento.
    if(linha.trim()==='')continue;
+   lista=null;tipo=null;
    const p=document.createElement('div');p.className='linha';mdInline(p,linha);alvo.appendChild(p);
   }
  }
