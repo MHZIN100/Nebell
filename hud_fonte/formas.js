@@ -385,7 +385,7 @@
   //  vermelho); `pressa` e `ruido` dao o temperamento.
 
   const ESTADOS = {
-    espera:     { forma: "giroscopio", rotulo: "EM ESPERA",       diz: "aguardando você",             matiz: -0.22, ruido: 0.5, pressa: 0.75, brilho: 0.92 },
+    espera:     { forma: "giroscopio", rotulo: "EM ESPERA",       diz: "aguardando você",             matiz: -0.22, ruido: 0.36, pressa: 0.75, brilho: 0.98 },
     ouvindo:    { forma: "ondas",      rotulo: "OUVINDO",         diz: "pode falar",                  matiz: -0.10, ruido: 0.9, pressa: 1.15, brilho: 1.12 },
     pensando:   { forma: "no",         rotulo: "PENSANDO",        diz: "montando a resposta",         matiz: 0.16,  ruido: 1.7, pressa: 2.00, brilho: 1.08 },
     falando:    { forma: "onda",       rotulo: "FALANDO",         diz: "respondendo",                 matiz: 0.02,  ruido: 1.0, pressa: 1.35, brilho: 1.22 },
@@ -768,8 +768,11 @@
       const bx = para[0], by = para[1], bz = para[2];
       const misturando = troca < 1;
 
-      // Respiro continuo: mesmo assentada, a forma pulsa e se torce.
-      const pulso = 1 + Math.sin(t * 0.8) * 0.045 + nivel * 0.1;
+      // Respiro continuo: mesmo assentada, a forma pulsa e se torce. A
+      // respiracao de repouso e lenta e um pouco mais funda (vida sem
+      // poluir), e a voz faz a nuvem AVANCAR de verdade -- so se move
+      // quando ha som, entao nao vira ruido visual.
+      const pulso = 1 + Math.sin(t * 0.62) * 0.055 + nivel * 0.24;
       const torcao = Math.sin(t * 0.37) * 0.35;
 
       const mola = 0.085 * Math.min(2.2, pressa);
