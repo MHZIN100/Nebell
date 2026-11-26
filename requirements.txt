@@ -53,3 +53,8 @@ python-docx
 openpyxl
 python-pptx
 reportlab
+
+# ícone na bandeja do Windows (área de notificação) — opcional. Sem ele,
+# a NEBELL abre igual, só sem o ícone na bandeja. Usa o Pillow, que já
+# está acima.
+pystray

@@ -380,6 +380,20 @@ class HudBridge:
 
         return [str(caminho) for caminho in escolhidos if caminho]
 
+    def mostrar(self):
+        """Traz a janela para a frente (usado pelo ícone da bandeja).
+        Tenta restaurar e mostrar; versões diferentes do pywebview têm
+        um ou outro método, então tenta os que existirem, sem quebrar."""
+        if self.window is None:
+            return
+        for metodo in ("restore", "show"):
+            try:
+                fn = getattr(self.window, metodo, None)
+                if fn:
+                    fn()
+            except Exception:
+                pass
+
     def destroy(self):
         self.active = False
 

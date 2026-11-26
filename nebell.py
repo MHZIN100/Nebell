@@ -100,6 +100,11 @@ except Exception:
     nebell_esp = None
 
 try:
+    import nebell_app
+except Exception:
+    nebell_app = None
+
+try:
     import nebell_voz
 except Exception:
     nebell_voz = None
@@ -10224,6 +10229,12 @@ def atualizar_estatisticas(uma_vez=False):
 def run_hud_mode():
     """Monta a janela e roda o NEBELL dentro dela."""
 
+    # Identidade de app no Windows: a janela e o atalho fixado na barra
+    # agrupam sob o ícone da NEBELL (não sob o python). Cedo, antes da
+    # janela. Guardado: fora do Windows, não faz nada.
+    if nebell_app is not None:
+        nebell_app.definir_identidade()
+
     nebell_hud.BIG_BANG = BIG_BANG   # a página lê isto ao ser gravada
     estado.hud = nebell_hud.HudBridge(HUD_FILE)
     estado.hud.on_submit = hud_submit
@@ -10277,6 +10288,19 @@ def run_hud_mode():
             threading.Thread(
                 target=voice_listen_loop, daemon=True
             ).start()
+
+            # Ícone da NEBELL na bandeja do Windows, com menu rápido.
+            # Guardado: sem pystray/fora do Windows, não faz nada.
+            if nebell_app is not None:
+                nebell_app.iniciar_bandeja(
+                    {
+                        "mostrar": lambda: estado.hud and estado.hud.mostrar(),
+                        "falar": hud_escutar,
+                        "nova": hud_nova_conversa,
+                        "sair": lambda: request_queue.put(("sair", "")),
+                    },
+                    log=print,
+                )
 
             speak(SAUDACAO)
 
@@ -10560,6 +10584,12 @@ def fechar_extras():
     if estado.enviador_esp is not None:
         try:
             estado.enviador_esp.parar()
+        except Exception:
+            pass
+
+    if nebell_app is not None:
+        try:
+            nebell_app.parar_bandeja()
         except Exception:
             pass
 

@@ -59,6 +59,9 @@ BLOCOS = [
     ("internet e imagens", ["ddgs", "pillow", "pytesseract"]),
     ("documentos", ["pypdf", "python-docx", "openpyxl", "python-pptx",
                     "reportlab"]),
+    # Opcional: ícone na bandeja do Windows. Se falhar, a NEBELL abre
+    # igual, só sem o ícone na bandeja.
+    ("ícone na bandeja (opcional)", ["pystray"]),
 ]
 
 # A voz XTTS e OPCIONAL e pesada (~2 GB de PyTorch + modelo de ~1.8 GB) e
