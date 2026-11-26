@@ -180,11 +180,23 @@ const api={
    document.body.dataset.state=FAMILIA[n.estado]||'trabalhando'}},
  setEsforco:v=>nucleo.setEsforco(v),
  setEsforcoNivel:n=>aplicarEsforco(String(n),false),
- setLevel:v=>nucleo.setLevel(v),
+ setLevel:v=>{nucleo.setLevel(v);empurrarVoz(v)},
  addMessage,streamMessage,fecharStream,trabalhando,setStats,setMics,
  setVozes,setVozAtual,setEscutando,setConversas:renderConversas,limparLog,
  onSubmit:null,setDemo:v=>{demo=!!v}};
 window.nebellUI=api;
+
+// Voz viva: o nível real do áudio (fala da NEBELL ou sua, via setLevel)
+// vira a variável CSS --voz, que a aura, o brilho-chão e o ponto do
+// status seguem. Um alvo que decai sozinho faz o pulso subir na hora e
+// baixar suave quando o som para — a NEBELL "respira" com a conversa.
+let _voz=0,_vozAlvo=0;
+function empurrarVoz(v){const n=Math.max(0,Math.min(1,Number(v)||0));if(n>_vozAlvo)_vozAlvo=n}
+setInterval(()=>{
+ _voz+=(_vozAlvo-_voz)*0.35; _vozAlvo*=0.84;
+ if(_voz<0.004)_voz=0;
+ document.documentElement.style.setProperty('--voz',_voz.toFixed(3));
+},55);
 
 
 // relógio e estatísticas simuladas (o Python substitui via setStats)

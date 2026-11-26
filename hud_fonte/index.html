@@ -36,9 +36,26 @@
      <select id="mic"><option value="auto">Automático</option></select></div>
    </div>
   </section>
-  <section class="panel conversa"><h2>Conversa</h2><div id="log"></div></section>
+  <section class="panel conversa">
+   <div class="conversa-cab">
+    <h2>Conversa</h2>
+    <div class="hist-wrap">
+     <button id="hist" class="iconbtn fino" title="Histórico de conversas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
+     </button>
+     <div id="hist-pop" class="hist-pop" hidden>
+      <div class="hist-cab">Histórico</div>
+      <button id="hist-nova" type="button" class="hist-nova">
+       <span class="hist-mais">+</span> Nova conversa
+      </button>
+      <div id="hist-lista" class="hist-lista"></div>
+     </div>
+    </div>
+   </div>
+   <div id="log"></div>
+  </section>
   <aside class="panel hudbox">
-   <div class="nucleo"><canvas id="hud"></canvas></div>
+   <div class="nucleo"><div class="aura" aria-hidden="true"></div><canvas id="hud"></canvas></div>
    <div class="status">
     <div class="status-linha"><span class="viva" aria-hidden="true"></span><div id="state">EM ESPERA</div></div>
     <div id="sub">Clique no microfone ou digite</div>
@@ -54,18 +71,6 @@
   <button id="file" class="iconbtn" title="Enviar um arquivo ou imagem para o NEBELL">
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
   </button>
-  <div class="hist-wrap">
-   <button id="hist" class="iconbtn" title="Histórico de conversas">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
-   </button>
-   <div id="hist-pop" class="hist-pop" hidden>
-    <div class="hist-cab">Histórico</div>
-    <button id="hist-nova" type="button" class="hist-nova">
-     <span class="hist-mais">+</span> Nova conversa
-    </button>
-    <div id="hist-lista" class="hist-lista"></div>
-   </div>
-  </div>
   <div class="effort-wrap">
    <button id="effort" class="iconbtn" title="Nível de esforço do modelo. Clique para abrir a barra.">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><line x1="12" y1="15" x2="16" y2="9.8"/><circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none"/></svg>
