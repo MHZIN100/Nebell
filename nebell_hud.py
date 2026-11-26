@@ -37,7 +37,7 @@ WINDOW_TITLE = "N.E.B.E.L.L."
 # quem ja tinha um hud/index.html de uma versao anterior nunca recebia
 # as mudancas novas. Foi o que aconteceu com o botao ARQUIVO, que estava
 # no codigo e nao aparecia na janela.
-HUD_VERSAO = 28
+HUD_VERSAO = 29
 MARCA_DE_VERSAO = "nebell-hud-versao"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 720
@@ -94,6 +94,7 @@ class HudBridge:
         self.on_set_esforco = None
         self.on_set_voz = None
         self.on_escutar = None          # HUD->Python: clique no microfone (falar)
+        self.on_salvar = None           # HUD->Python: baixar um bloco de código
         self.on_abrir_conversa = None   # HUD->Python: continuar uma conversa
         self.on_nova_conversa = None    # HUD->Python: comecar uma conversa nova
         self.obter_conversas = None     # HUD->Python: lista para o historico
@@ -162,6 +163,20 @@ class HudBridge:
             if bridge.on_escutar:
                 threading.Thread(
                     target=bridge.on_escutar, daemon=True
+                ).start()
+
+            return True
+
+        def salvar_arquivo(self, nome, texto):
+            """O botao BAIXAR de um bloco de codigo: abre o diálogo nativo
+            de salvar (pelo Python) e grava o arquivo."""
+            bridge = self._bridge
+
+            if bridge.on_salvar:
+                threading.Thread(
+                    target=bridge.on_salvar,
+                    args=(str(nome), str(texto)),
+                    daemon=True,
                 ).start()
 
             return True
@@ -379,6 +394,28 @@ class HudBridge:
             escolhidos = [escolhidos]
 
         return [str(caminho) for caminho in escolhidos if caminho]
+
+    def pedir_salvar(self, nome):
+        """Abre o diálogo nativo de SALVAR e devolve o caminho escolhido
+        (ou None se cancelou / a janela não está de pé)."""
+        if self.window is None or webview is None:
+            return None
+
+        try:
+            escolhido = self.window.create_file_dialog(
+                webview.SAVE_DIALOG, save_filename=str(nome)
+            )
+        except Exception as exc:
+            self.log(f"[HUD] Não consegui abrir o salvar: {exc}")
+            return None
+
+        if not escolhido:
+            return None
+
+        if isinstance(escolhido, (list, tuple)):
+            escolhido = escolhido[0] if escolhido else None
+
+        return str(escolhido) if escolhido else None
 
     def mostrar(self):
         """Traz a janela para a frente (usado pelo ícone da bandeja).

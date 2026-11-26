@@ -781,13 +781,22 @@ Seu nome é NEBELL. Você é a assistente pessoal dele, no computador dele.
 Trate o usuário por "senhor". Fale português do Brasil, com elegância e
 sem rodeios.
 
-Suas respostas são faladas em voz alta E aparecem numa janela:
-- Uma a três frases, começando pela resposta, sem repetir a pergunta.
-- A fala ignora a formatação, então NA JANELA você pode destacar em
-  **negrito** os termos e números importantes, e usar listas com "- "
-  quando enumerar. Com parcimônia: não ponha negrito em tudo. Nada de
-  títulos, tabelas, emojis ou endereços de sites.
-- Números e unidades escritos como se fala: "vinte e cinco graus".
+Suas respostas são faladas em voz alta E aparecem numa janela. A fala
+ignora toda a formatação (ela lê só o texto), então use os recursos da
+JANELA quando ajudarem de verdade — com parcimônia, nunca enfeite à toa:
+- Comece pela resposta. Em voz, seja curta (uma a três frases); num
+  pedido que peça detalhe, código ou dados, pode se estender por escrito.
+- **negrito** nos termos e números que importam; listas com "- " ou
+  "1." para enumerar; um emoji ocasional quando couber no tom.
+- TABELA quando comparar itens por colunas (markdown com | e a linha
+  separadora |---|). GRÁFICO de barras para números: um bloco cercado com
+  ```grafico na primeira linha, depois "titulo: ..." (opcional) e uma
+  linha "rótulo: número" por barra.
+- CÓDIGO sempre num bloco cercado com a linguagem (```python), que a
+  janela mostra com botões de copiar e baixar. Não leia o código em voz;
+  só diga em uma frase o que ele faz.
+- Números e unidades escritos como se fala ("vinte e cinco graus"); nada
+  de endereços de sites falados.
 
 RESPONDER COM O DADO, não com um site:
 - Clima, temperatura, chuva: use a ferramenta clima.
@@ -9913,6 +9922,25 @@ def hud_set_voz(chave):
     ui_message("nebell", mensagem)
 
 
+def hud_salvar(nome, texto):
+    """O botão BAIXAR de um bloco de código: salva em arquivo pela
+    janela, com o diálogo nativo de salvar."""
+    if estado.hud is None:
+        return
+
+    caminho = estado.hud.pedir_salvar(nome)
+
+    if not caminho:
+        return
+
+    try:
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            arquivo.write(texto)
+        ui_message("nebell", f"Salvei em {caminho}.")
+    except Exception as exc:
+        ui_message("nebell", f"Não consegui salvar: {exc}")
+
+
 def hud_ready():
     """A pagina abriu: manda o estado inicial de uma vez."""
     atualizar_estatisticas(uma_vez=True)
@@ -10246,6 +10274,7 @@ def run_hud_mode():
     estado.hud.on_set_esforco = hud_set_esforco
     estado.hud.on_set_voz = hud_set_voz
     estado.hud.on_escutar = hud_escutar
+    estado.hud.on_salvar = hud_salvar
     estado.hud.on_abrir_conversa = hud_abrir_conversa
     estado.hud.on_nova_conversa = hud_nova_conversa
     estado.hud.obter_conversas = listar_conversas

@@ -56,48 +56,123 @@ function mdInline(alvo,texto){
   resto=resto.slice(m.index+tok.length);
  }
 }
-function mdBlocoDeCodigo(texto){
+// Baixar um texto como arquivo. Na janela do NEBELL usa o diálogo
+// nativo (pelo Python); fora dele (navegador/demo) cai no Blob.
+const EXT_COD={python:'py',py:'py',javascript:'js',js:'js',typescript:'ts',ts:'ts',
+ html:'html',css:'css',json:'json',bash:'sh',sh:'sh',shell:'sh',c:'c',cpp:'cpp',
+ 'c++':'cpp',cs:'cs',java:'java',sql:'sql',yaml:'yml',yml:'yml',md:'md',markdown:'md',
+ xml:'xml',go:'go',rust:'rs',rs:'rs',php:'php',ruby:'rb',rb:'rb',kotlin:'kt',swift:'swift',
+ ini:'ini',toml:'toml',bat:'bat',powershell:'ps1',ps1:'ps1',text:'txt',txt:'txt'};
+function baixarArquivo(nome,texto){
+ const b=bridge();
+ if(b&&b.salvar_arquivo){try{b.salvar_arquivo(nome,texto);return}catch(e){}}
+ try{
+  const blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=nome;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+ }catch(e){}
+}
+// Bloco de código: etiqueta da linguagem + botões COPIAR e BAIXAR.
+function mdBlocoDeCodigo(texto,lang){
  const wrap=document.createElement('div');wrap.className='codebloco';
- const bt=document.createElement('button');bt.type='button';bt.className='copiar';bt.textContent='copiar';
- bt.addEventListener('click',()=>{try{navigator.clipboard.writeText(texto)}catch(e){}
-  bt.textContent='copiado';setTimeout(()=>{bt.textContent='copiar'},1200)});
+ const barra=document.createElement('div');barra.className='cb-barra';
+ const et=document.createElement('span');et.className='cb-lang';et.textContent=lang||'código';
+ const bc=document.createElement('button');bc.type='button';bc.className='cb-bt copiar';bc.textContent='copiar';
+ bc.addEventListener('click',()=>{try{navigator.clipboard.writeText(texto)}catch(e){}
+  bc.textContent='copiado';setTimeout(()=>{bc.textContent='copiar'},1200)});
+ const bd=document.createElement('button');bd.type='button';bd.className='cb-bt baixar';bd.textContent='baixar';
+ const ext=EXT_COD[(lang||'').toLowerCase()]||'txt';
+ bd.addEventListener('click',()=>baixarArquivo('nebell.'+ext,texto));
+ const dir=document.createElement('div');dir.className='cb-acoes';dir.append(bc,bd);
+ barra.append(et,dir);
  const pre=document.createElement('pre');const code=document.createElement('code');
  code.textContent=texto;pre.appendChild(code);
- wrap.append(bt,pre);return wrap;
+ wrap.append(barra,pre);return wrap;
+}
+// Gráfico de barras a partir de um bloco ```grafico com linhas
+// "rótulo: número" (e um "titulo:" opcional). Barras em DOM (sem canvas).
+function mdGrafico(corpo){
+ const wrap=document.createElement('div');wrap.className='grafico';
+ let titulo='';const dados=[];
+ for(const l of String(corpo).split('\n')){
+  const t=l.trim();if(!t)continue;
+  let m=/^t[ií]tulo\s*:\s*(.+)$/i.exec(t);
+  if(m){titulo=m[1].trim();continue}
+  m=/^(.+?):\s*(-?\d+(?:[.,]\d+)?)\s*$/.exec(t);
+  if(m)dados.push({rot:m[1].trim(),val:parseFloat(m[2].replace(',','.'))});
+ }
+ if(titulo){const h=document.createElement('div');h.className='grafico-tit';h.textContent=titulo;wrap.appendChild(h)}
+ if(!dados.length){const p=document.createElement('pre');p.className='g-cru';p.textContent=String(corpo);wrap.appendChild(p);return wrap}
+ const max=Math.max.apply(null,dados.map(d=>Math.abs(d.val)).concat([1]));
+ const barras=document.createElement('div');barras.className='grafico-barras';
+ for(const d of dados){
+  const col=document.createElement('div');col.className='g-col';
+  const v=document.createElement('div');v.className='g-val';v.textContent=d.val;
+  const barra=document.createElement('div');barra.className='g-bar';
+  barra.style.height=Math.max(3,Math.round(Math.abs(d.val)/max*130))+'px';
+  const rot=document.createElement('div');rot.className='g-rot';rot.textContent=d.rot;
+  col.append(v,barra,rot);barras.appendChild(col);
+ }
+ wrap.appendChild(barras);return wrap;
+}
+// Tabela markdown (| a | b |) -> <table>, célula a célula, com mdInline.
+function _celulas(linha){
+ let s=linha.trim();
+ if(s.startsWith('|'))s=s.slice(1);
+ if(s.endsWith('|'))s=s.slice(0,-1);
+ return s.split('|').map(c=>c.trim());
+}
+function _ehSeparador(l){return /\|/.test(l)&&/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(l)}
+function mdTabela(linhas){
+ const t=document.createElement('table');t.className='md-tabela';
+ const thead=document.createElement('thead');const trh=document.createElement('tr');
+ for(const c of _celulas(linhas[0])){const th=document.createElement('th');mdInline(th,c);trh.appendChild(th)}
+ thead.appendChild(trh);t.appendChild(thead);
+ const tb=document.createElement('tbody');
+ for(let i=2;i<linhas.length;i++){
+  const tr=document.createElement('tr');
+  for(const c of _celulas(linhas[i])){const td=document.createElement('td');mdInline(td,c);tr.appendChild(td)}
+  tb.appendChild(tr);
+ }
+ t.appendChild(tb);return t;
+}
+// Um trecho fora de bloco de código: tabelas, títulos, listas e parágrafos.
+function renderBloco(alvo,texto){
+ const linhas=texto.split('\n');
+ let lista=null,tipo=null;
+ for(let j=0;j<linhas.length;j++){
+  const linha=linhas[j];
+  // Tabela: linha com | seguida de um separador |---|.
+  if(/\|/.test(linha)&&j+1<linhas.length&&_ehSeparador(linhas[j+1])){
+   lista=null;tipo=null;
+   const bloco=[linha,linhas[j+1]];let k=j+2;
+   while(k<linhas.length&&/\|/.test(linhas[k])&&linhas[k].trim()!=='')bloco.push(linhas[k++]);
+   const env=document.createElement('div');env.className='tabela-wrap';env.appendChild(mdTabela(bloco));
+   alvo.appendChild(env);j=k-1;continue;
+  }
+  let m;
+  if(m=/^\s*#{1,6}\s+(.*)$/.exec(linha)){lista=null;tipo=null;const h=document.createElement('div');h.className='titulo';mdInline(h,m[1]);alvo.appendChild(h);continue}
+  if(m=/^\s*\d+[.)]\s+(.*)$/.exec(linha)){if(tipo!=='ol'){lista=document.createElement('ol');tipo='ol';alvo.appendChild(lista)}const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue}
+  if(m=/^\s*[-*+•]\s+(.*)$/.exec(linha)){if(tipo!=='ul'){lista=document.createElement('ul');tipo='ul';alvo.appendChild(lista)}const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue}
+  if(linha.trim()==='')continue;
+  lista=null;tipo=null;const p=document.createElement('div');p.className='linha';mdInline(p,linha);alvo.appendChild(p);
+ }
 }
 function renderMarkdown(alvo,texto){
  alvo.replaceChildren();
- const partes=String(texto).split('```');   // par=fora, impar=bloco de codigo
+ const partes=String(texto).split('```');   // par=fora, impar=bloco cercado
  for(let i=0;i<partes.length;i++){
   if(i%2===1){
-   let corpo=partes[i];const nl=corpo.indexOf('\n');
-   if(nl>=0 && !corpo.slice(0,nl).includes(' '))corpo=corpo.slice(nl+1); // tira "linguagem"
-   alvo.appendChild(mdBlocoDeCodigo(corpo));continue;
+   let corpo=partes[i],lang='';const nl=corpo.indexOf('\n');
+   if(nl>=0 && !corpo.slice(0,nl).includes(' ')){lang=corpo.slice(0,nl).trim();corpo=corpo.slice(nl+1)}
+   const lg=lang.toLowerCase();
+   if(lg==='grafico'||lg==='gráfico'||lg==='chart'){alvo.appendChild(mdGrafico(corpo));continue}
+   alvo.appendChild(mdBlocoDeCodigo(corpo,lang));continue;
   }
   if(!partes[i])continue;
-  let lista=null,tipo=null;   // tipo: 'ul' (marcadores) ou 'ol' (numerada)
-  for(const linha of partes[i].split('\n')){
-   let m;
-   // Título (# .. ######): vira uma linha destacada.
-   if(m=/^\s*#{1,6}\s+(.*)$/.exec(linha)){
-    lista=null;tipo=null;
-    const h=document.createElement('div');h.className='titulo';mdInline(h,m[1]);alvo.appendChild(h);continue;
-   }
-   // Lista numerada (1. / 1) ...).
-   if(m=/^\s*\d+[.)]\s+(.*)$/.exec(linha)){
-    if(tipo!=='ol'){lista=document.createElement('ol');tipo='ol';alvo.appendChild(lista)}
-    const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue;
-   }
-   // Lista com marcador (-, *, +, •).
-   if(m=/^\s*[-*+•]\s+(.*)$/.exec(linha)){
-    if(tipo!=='ul'){lista=document.createElement('ul');tipo='ul';alvo.appendChild(lista)}
-    const li=document.createElement('li');mdInline(li,m[1]);lista.appendChild(li);continue;
-   }
-   // Linha em branco: não quebra a lista em andamento.
-   if(linha.trim()==='')continue;
-   lista=null;tipo=null;
-   const p=document.createElement('div');p.className='linha';mdInline(p,linha);alvo.appendChild(p);
-  }
+  renderBloco(alvo,partes[i]);
  }
 }
 // Cabeçalho da mensagem: papel + hora (HH:MM), em dois campos, sem o

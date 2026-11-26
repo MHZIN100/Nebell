@@ -1515,7 +1515,8 @@ class TestMarkdownSeguroFonte(unittest.TestCase):
 
     def test_css_do_bloco_de_codigo(self):
         self.assertIn(".codebloco", self.css)
-        self.assertIn(".copiar", self.css)
+        # Os botões do bloco (copiar/baixar) são estilizados por .cb-bt.
+        self.assertIn(".cb-bt", self.css)
 
 
 if __name__ == "__main__":
