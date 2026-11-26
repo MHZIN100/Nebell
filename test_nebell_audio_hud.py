@@ -1171,7 +1171,10 @@ class TestBotaoNaPagina(HudTest):
         self.assertNotIn('type="file"', H.HUD_HTML)
 
     def test_o_botao_tem_estilo_proprio(self):
-        self.assertIn("#file{", H.HUD_HTML)
+        # O rodapé agora é um sistema único de botões (.iconbtn); o botão
+        # de arquivo é um deles, já estilizado por esse sistema.
+        self.assertIn(".iconbtn", H.HUD_HTML)
+        self.assertIn('id="file"', H.HUD_HTML)
 
     def test_o_parar_continua_la(self):
         self.assertIn('id="halt"', H.HUD_HTML)
@@ -1412,7 +1415,7 @@ class TestFrontEndEmArquivos(unittest.TestCase):
         css = (H.FONTE_DIR / "estilo.css").read_text(encoding="utf-8")
         formas = (H.FONTE_DIR / "formas.js").read_text(encoding="utf-8")
         app = (H.FONTE_DIR / "app.js").read_text(encoding="utf-8")
-        self.assertIn("#file{", css)
+        self.assertIn(".iconbtn", css)
         self.assertIn("NebellFormas", formas)
         for marca in ("setVozes", "setEscutando", "setEsforco"):
             self.assertIn(marca, app, marca)

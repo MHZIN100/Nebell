@@ -74,10 +74,16 @@ function renderMarkdown(alvo,texto){
   }
  }
 }
+// Cabeçalho da mensagem: papel + hora (HH:MM), em dois campos, sem o
+// "·" e sem segundos — o relógio cheio poluía o log.
+function horaCurta(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+function metaMsg(role){const sm=document.createElement('small');
+ const pa=document.createElement('span');pa.className='papel';pa.textContent=(role==='user'?'Você':'NEBELL');
+ const ho=document.createElement('span');ho.className='hora';ho.textContent=horaCurta();
+ sm.append(pa,ho);return sm}
 function addMessage(role,text){fecharStream();const d=document.createElement('div');d.className='msg '+(role==='user'?'user':'nebell');
- const t=new Date().toLocaleTimeString('pt-BR');const sm=document.createElement('small');sm.textContent=(role==='user'?'VOCÊ':'NEBELL')+' · '+t;
  const p=document.createElement('div');if(role==='user'){p.textContent=text}else{renderMarkdown(p,text)}
- d.append(sm,p);const log=$('#log');log.append(d);
+ d.append(metaMsg(role),p);const log=$('#log');log.append(d);
  while(log.children.length>60)log.firstChild.remove();log.scrollTop=log.scrollHeight}
 
 // Bolha que se preenche enquanto ele gera. Antes o texto so aparecia
@@ -88,10 +94,8 @@ function streamMessage(text){
  const log=$('#log');
  if(!streamP){
   const d=document.createElement('div');d.className='msg nebell streaming';
-  const t=new Date().toLocaleTimeString('pt-BR');
-  const sm=document.createElement('small');sm.textContent='NEBELL · '+t;
   streamP=document.createElement('div');
-  d.append(sm,streamP);log.append(d);
+  d.append(metaMsg('nebell'),streamP);log.append(d);
   while(log.children.length>60)log.firstChild.remove();
  }
  renderMarkdown(streamP,text);
@@ -300,19 +304,19 @@ function efMedir(){if(!efTrack||!efCv)return;const r=efTrack.getBoundingClientRe
 
 // --- as três cenas animadas ---
 function efCena(t){if(!efCtx)return;efCtx.clearRect(0,0,efW,efH);
- if(nivelEsforco==='rapido'){                       // azul calmo
-  const g=efCtx.createLinearGradient(0,0,efW,0);g.addColorStop(0,'#123a6b');g.addColorStop(1,'#2f7bd6');
+ if(nivelEsforco==='rapido'){                       // azul-violeta calmo
+  const g=efCtx.createLinearGradient(0,0,efW,0);g.addColorStop(0,'#1d2a66');g.addColorStop(1,'#4f6fd8');
   efCtx.fillStyle=g;efCtx.fillRect(0,0,efW,efH);
   const x=((t/1500)%1)*efW;const gg=efCtx.createLinearGradient(x-40,0,x+40,0);
   gg.addColorStop(0,'rgba(255,255,255,0)');gg.addColorStop(.5,'rgba(255,255,255,.16)');gg.addColorStop(1,'rgba(255,255,255,0)');
   efCtx.fillStyle=gg;efCtx.fillRect(0,0,efW,efH);
- }else if(nivelEsforco==='normal'){                 // laranja borbulhando
-  const g=efCtx.createLinearGradient(0,0,0,efH);g.addColorStop(0,'#c8541a');g.addColorStop(1,'#eb922c');
+ }else if(nivelEsforco==='normal'){                 // violeta borbulhando (a cor da marca)
+  const g=efCtx.createLinearGradient(0,0,0,efH);g.addColorStop(0,'#4a2596');g.addColorStop(1,'#8b5cf0');
   efCtx.fillStyle=g;efCtx.fillRect(0,0,efW,efH);
   if(Math.random()<0.32)efBolhas.push({x:Math.random()*efW,y:efH+4,r:Math.random()*3+1.5,v:Math.random()*0.6+0.4,w:Math.random()*6.28});
   efBolhas=efBolhas.filter(b=>b.y>-6);
   for(const b of efBolhas){b.y-=b.v;b.x+=Math.sin(b.w+t/300)*0.3;
-   efCtx.beginPath();efCtx.arc(b.x,b.y,b.r,0,6.28);efCtx.fillStyle='rgba(255,224,160,.55)';efCtx.fill();}
+   efCtx.beginPath();efCtx.arc(b.x,b.y,b.r,0,6.28);efCtx.fillStyle='rgba(214,186,255,.6)';efCtx.fill();}
  }else{                                             // céu estrelado + meteoros
   efCtx.fillStyle='#0a0a1e';efCtx.fillRect(0,0,efW,efH);
   for(const s of efEstrelas){const a=0.35+0.55*Math.abs(Math.sin(s.f+t/380));
