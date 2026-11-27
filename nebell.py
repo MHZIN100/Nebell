@@ -467,10 +467,17 @@ NUM_CTX = 8192
 # perdia a instrução e só cumprimentava) e um programa inteiro não cabia na
 # saída. Então, no domínio "codigo", a janela e o teto de saída sobem.
 #
-# 16384 é o mesmo valor que o perfil "estudo" já usa, então a máquina dá
-# conta — e o coder (3b) é menor que o geral (4b), ocupando menos cache que
-# ele. Custa mais RAM: se faltar memória, basta baixar estes dois números.
-NUM_CTX_CODIGO = 16384
+# A janela fica em 8192 (a mesma da conversa, que a máquina JÁ carrega sem
+# problema). Tentamos 16384 antes, mas nos 8 GB com a RAM cheia o Ollama não
+# conseguia alocar o cache desse tamanho e a consulta ao modelo falhava
+# ("erro ao consultar o modelo"). 8192 já cabe um prompt grande com folga.
+# Se um dia a máquina tiver RAM livre (apps fechados), dá para subir isto.
+#
+# O ganho que importa e NÃO custa memória é o num_predict alto: o modelo
+# podia ENTENDER o pedido mas não tinha espaço para escrever o programa
+# inteiro (saía cortado). num_predict só limita o tamanho da resposta; não
+# aloca cache, então pode ser generoso sem risco de estourar a RAM.
+NUM_CTX_CODIGO = 8192
 NUM_PREDICT_CODIGO = 4096
 
 # As MESMAS opcoes do aquecimento e das perguntas. Se forem diferentes,
