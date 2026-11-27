@@ -151,15 +151,34 @@ class VozHibrida:
     online por um tempo. Avisa no log quando troca de modo.
     """
 
-    def __init__(self, online, offline, log=print,
-                 espera_apos_falha=ESPERA_APOS_FALHA):
+    def __init__(self, online, offline=None, log=print,
+                 espera_apos_falha=ESPERA_APOS_FALHA, offline_loader=None):
+        """`offline` pode vir pronto, OU `offline_loader` como uma função que
+        constrói a voz offline só na primeira vez que a internet falhar. O
+        segundo caminho economiza ~350 MB de RAM: com internet (o caso comum),
+        o modelo offline nunca chega a ser carregado."""
         self.online = online
-        self.offline = offline
+        self._offline = offline
+        self._offline_loader = offline_loader
+        self._offline_lock = threading.Lock()
         self.log = log
         self.voz = getattr(online, "voz", "")
         self._espera = espera_apos_falha
         self._proxima_tentativa = 0.0
         self._modo = None              # True=online, False=offline, None=indefinido
+
+    @property
+    def offline(self):
+        """Carrega a voz offline sob demanda (e guarda), de forma segura entre
+        threads. Devolve None se não há offline nem como carregá-la."""
+        if self._offline is None and self._offline_loader is not None:
+            with self._offline_lock:
+                if self._offline is None:
+                    self.log("[Voz] Carregando a voz offline (Kokoro) agora...")
+                    self._offline = self._offline_loader()
+                    # Carregou uma vez; não tenta de novo se tiver falhado.
+                    self._offline_loader = None
+        return self._offline
 
     def rotulo(self):
         """Rótulo para o painel, dizendo o modo atual (online/offline)."""
@@ -192,4 +211,7 @@ class VozHibrida:
                 self._proxima_tentativa = agora + self._espera
                 self._avisar(False, f" ({type(exc).__name__})")
 
-        return self.offline.sintetizar(texto)
+        offline = self.offline       # carrega sob demanda na primeira falha
+        if offline is None:
+            raise RuntimeError("sem voz offline para cair quando a online falha")
+        return offline.sintetizar(texto)

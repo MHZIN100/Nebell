@@ -2500,8 +2500,12 @@ class TestWhisperCaiParaCpu(NebellTest):
                  mock.patch.object(J, "WHISPER_COMPUTE", "auto"):
                 J.load_whisper()
 
-                self.assertEqual(tentativas[0][0], "cuda")
-                self.assertEqual(tentativas[1], ("cpu", "int8"))
+                # Agora a placa é tentada primeiro em int8_float16 (metade da
+                # VRAM) e, se falhar, ainda em float16 na própria placa, antes
+                # de descer para o processador.
+                self.assertEqual(tentativas[0], ("cuda", "int8_float16"))
+                self.assertIn(("cuda", "float16"), tentativas)
+                self.assertEqual(tentativas[-1], ("cpu", "int8"))
                 self.assertIsNotNone(J.estado.whisper_model)
                 self.assertEqual(J.WHISPER_BEAM_SIZE, J.WHISPER_BEAM_CPU)
         finally:
@@ -3212,6 +3216,61 @@ class TestVoz(NebellTest):
     def test_ordem_da_preferencia_e_respeitada(self):
         achado = self.descobrir(["cadu/model.onnx", "dii/model.onnx"])
         self.assertEqual(achado, "voices/dii/model.onnx")
+
+
+class TestVozHibridaPreguicosa(unittest.TestCase):
+    """A voz offline (Kokoro, ~350 MB) só deve ser carregada quando a internet
+    cair — com internet, nem chega a ocupar RAM."""
+
+    class _FalsaVoz:
+        def __init__(self, voz="x", falha=False):
+            self.voz = voz
+            self.falha = falha
+            self.chamadas = 0
+
+        def sintetizar(self, texto):
+            self.chamadas += 1
+            if self.falha:
+                raise RuntimeError("sem internet")
+            return b"audio"
+
+    def _edge(self):
+        import importlib
+        return importlib.import_module("nebell_edge")
+
+    def test_com_internet_nao_carrega_o_offline(self):
+        edge = self._edge()
+        online = self._FalsaVoz(falha=False)
+        carregou = []
+
+        def loader():
+            carregou.append(True)
+            return self._FalsaVoz()
+
+        voz = edge.VozHibrida(online, log=lambda *a: None, offline_loader=loader)
+        for _ in range(3):
+            self.assertEqual(voz.sintetizar("oi"), b"audio")
+        self.assertEqual(carregou, [])          # offline nunca foi construído
+
+    def test_sem_internet_carrega_o_offline_uma_vez(self):
+        edge = self._edge()
+        online = self._FalsaVoz(falha=True)
+        offline = self._FalsaVoz()
+        carregou = []
+
+        def loader():
+            carregou.append(True)
+            return offline
+
+        voz = edge.VozHibrida(online, log=lambda *a: None,
+                              offline_loader=loader,
+                              espera_apos_falha=9999)
+        # primeira fala: online falha -> carrega offline e usa
+        self.assertEqual(voz.sintetizar("oi"), b"audio")
+        # segunda fala: segura a online, usa o offline já carregado
+        self.assertEqual(voz.sintetizar("de novo"), b"audio")
+        self.assertEqual(len(carregou), 1)       # carregou só uma vez
+        self.assertEqual(offline.chamadas, 2)
 
     def test_ajuste_da_voz_e_aplicado(self):
         class FalsaConfig:

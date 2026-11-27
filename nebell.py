@@ -3435,7 +3435,11 @@ def load_whisper():
                 device = "cpu"
 
         if compute == "auto":
-            compute = "float16" if device == "cuda" else "int8"
+            # int8_float16 na placa: pesos em int8 (metade da VRAM do float16)
+            # e contas em float16. Para o Whisper small a qualidade é
+            # praticamente a mesma, e o meio giga de VRAM que sobra é o que
+            # falta para o modelo de conversa caber junto numa 3050 de 6 GB.
+            compute = "int8_float16" if device == "cuda" else "int8"
 
         WHISPER_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -3465,6 +3469,10 @@ def load_whisper():
         tentativas = [(device, compute)]
 
         if device == "cuda":
+            # Se a placa não aceitar int8_float16 (GPU antiga), cai para
+            # float16 ainda na placa antes de desistir e ir para o processador.
+            if compute == "int8_float16":
+                tentativas.append(("cuda", "float16"))
             tentativas.append(("cpu", "int8"))
 
         for onde, como in tentativas:
@@ -11188,19 +11196,23 @@ def main():
     estado.voz_neural = preparar_xtts()
 
     if estado.voz_neural is None:
-        offline = preparar_kokoro()      # VozKokoro (offline) ou None
         online = preparar_edge()         # VozEdge (online) ou None
 
-        if online is not None and offline is not None:
-            estado.voz_neural = nebell_edge.VozHibrida(online, offline, log=print)
+        if online is not None:
+            # Com internet, o Kokoro offline é só reserva. Em vez de carregá-lo
+            # já (uns 350 MB de RAM parados), passamos um loader: ele só é
+            # construído na PRIMEIRA vez que a internet cair. Economia direta
+            # de memória no caso comum (com internet).
+            estado.voz_neural = nebell_edge.VozHibrida(
+                online, log=print, offline_loader=preparar_kokoro
+            )
             nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
             estado.VOZ_ROTULO = f"Microsoft {nome} + Kokoro"
-        elif offline is not None:
-            estado.voz_neural = offline         # VOZ_ROTULO já = "Kokoro · pf_dora"
-        elif online is not None:
-            estado.voz_neural = online
-            nome = EDGE_VOZ.replace("pt-BR-", "").replace("Neural", "")
-            estado.VOZ_ROTULO = f"Microsoft {nome}"
+        else:
+            # Sem online, o offline passa a ser a voz principal: aí sim carrega.
+            offline = preparar_kokoro()
+            if offline is not None:
+                estado.voz_neural = offline     # VOZ_ROTULO já = "Kokoro · pf_dora"
 
     if estado.voz_neural is not None:
         print(f"Voz: {estado.VOZ_ROTULO}.")
@@ -11298,6 +11310,17 @@ def main():
         threading.Thread(target=voice_barge_in_watcher, daemon=True).start()
 
     setup_microphone()
+
+    # O arranque já criou tudo o que é permanente (módulos, config, parsers,
+    # prompt do sistema). gc.freeze() move esses objetos para uma geração que
+    # o coletor cíclico NÃO varre mais — então, numa sessão longa, cada passada
+    # do GC fica mais curta e barata. Os modelos carregados depois (nas threads
+    # acima) continuam coletáveis, então a liberação por ociosidade segue
+    # funcionando normalmente.
+    try:
+        gc.freeze()
+    except Exception:
+        nebell_log and nebell_log.engolido("gc.freeze no arranque")
 
     try:
         # Com a HUD, a janela fica com a thread principal e o NEBELL
