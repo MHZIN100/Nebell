@@ -3553,6 +3553,29 @@ class TestOllamaAutomatico(NebellTest):
         pre.assert_not_called()
         self.assertTrue(any("ollama pull qwen2.5-coder:3b" in a for a in avisos))
 
+    def test_troca_avisa_quando_termina_e_sai_do_trocando(self):
+        # Depois de trocar, a janela não pode ficar presa em "TROCANDO": tem
+        # de avisar que terminou e voltar ao repouso.
+        estado = J.estado
+        estado.modelo_atual = None
+        estado.dominio_atual = "geral"
+        estados = []
+        avisos = []
+
+        with mock.patch.object(J, "MODELO_CODIGO", "qwen2.5-coder:3b"), \
+             mock.patch.object(J, "modelo_instalado", return_value=True), \
+             mock.patch.object(J, "ui_message", side_effect=lambda p, t: avisos.append(t)), \
+             mock.patch.object(J, "ui_state", side_effect=lambda s: estados.append(s)), \
+             mock.patch.object(J, "precarregar_modelo"), \
+             mock.patch.object(J, "descarregar_modelo"), \
+             mock.patch.object(J, "atualizar_estatisticas"):
+            J.trocar_para_dominio("codigo")
+
+        self.assertEqual(estado.modelo_atual, "qwen2.5-coder:3b")
+        self.assertIn("trocando", estados)
+        self.assertEqual(estados[-1], "idle")              # não ficou em "trocando"
+        self.assertTrue(any("Pronto" in a for a in avisos))
+
     def test_troca_usa_um_coder_leve_instalado(self):
         # Configurado para o 3b (ausente), mas o 1.5b está baixado: usa o leve.
         estado = J.estado

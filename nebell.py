@@ -2814,6 +2814,13 @@ def trocar_para_dominio(dominio):
     except Exception:
         nebell_log and nebell_log.engolido("troca: atualizar painel")
 
+    # AVISA QUE TERMINOU. Sem isto, a janela ficava travada em "TROCANDO" e a
+    # pessoa esperava à toa achando que ainda estava carregando. Volta ao
+    # repouso; se vier uma resposta logo em seguida (troca automática), o
+    # próprio fluxo põe "pensando" por cima.
+    ui_message("nebell", f"Pronto, senhor: agora no modelo de {nome}.")
+    ui_state("idle")
+
 
 def perguntar_troca(dominio, origem, texto):
     """Segura o pedido e pergunta na janela se pode trocar de modelo
