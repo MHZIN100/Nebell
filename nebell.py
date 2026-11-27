@@ -659,6 +659,27 @@ ESFORCO_PADRAO = "normal"
 
 ESFORCO_THINK = {"rapido": False, "normal": False, "alto": True}
 
+# Nem todo modelo sabe "pensar" (raciocinar antes de responder). O geral
+# (qwen3.5) sabe; o de programação (qwen2.5-coder) NÃO — e mandar think:true
+# para quem não pensa estragava a resposta (era por isso que o modo
+# Programação "não correspondia" no esforço alto). Só ligamos o pensar para
+# as famílias que o suportam; o resto responde direto mesmo no esforço alto.
+_FAMILIAS_PENSANTES = ("qwen3", "qwq", "deepseek-r1", "-r1", "magistral",
+                       "marco-o1", "thinking", "reasoner", "cogito", "phi4-reasoning")
+
+# Modelos que, na prática, recusaram o think (aprendido em tempo de execução).
+MODELOS_SEM_THINK = set()
+
+
+def modelo_suporta_think(nome):
+    """True só para modelos que raciocinam. Protege o coder (e qualquer outro
+    que não pensa) de receber think:true e devolver resposta quebrada."""
+    nome = (nome or "").lower()
+    if nome in MODELOS_SEM_THINK:
+        return False
+    return any(fam in nome for fam in _FAMILIAS_PENSANTES)
+
+
 # Teto de tokens por nível para conversa comum. None = usa o do perfil.
 ESFORCO_TETO = {"rapido": 160, "normal": None, "alto": None}
 
@@ -1235,6 +1256,69 @@ class ThinkFilter:
         result = self.buffer
         self.buffer = ""
         return result
+
+
+class FalaSemBlocos:
+    """
+    Tira os blocos de código (``` ... ```) do texto que vai para a FALA.
+
+    A janela continua recebendo o código inteiro (para ver, copiar e baixar);
+    só a voz não lê os símbolos — no lugar de cada bloco ela diz uma vez
+    'código na tela'. Trabalha em streaming, igual ao ThinkFilter, segurando o
+    fim do buffer só quando ele pode ser o começo de uma cerca ```.
+    """
+
+    CERCA = "```"
+    AVISO = " Código na tela. "
+
+    def __init__(self):
+        self.buffer = ""
+        self.in_code = False
+
+    def feed(self, chunk):
+        self.buffer += chunk
+        output = ""
+
+        while self.buffer:
+            if self.in_code:
+                pos = self.buffer.find(self.CERCA)
+
+                if pos == -1:
+                    keep = tail_prefix_length(self.buffer, self.CERCA)
+                    self.buffer = self.buffer[len(self.buffer) - keep:] if keep else ""
+                    break
+
+                self.buffer = self.buffer[pos + len(self.CERCA):]
+                self.in_code = False
+                continue
+
+            pos = self.buffer.find(self.CERCA)
+
+            if pos != -1:
+                output += self.buffer[:pos] + self.AVISO
+                self.buffer = self.buffer[pos + len(self.CERCA):]
+                self.in_code = True
+                continue
+
+            keep = tail_prefix_length(self.buffer, self.CERCA)
+
+            if keep:
+                output += self.buffer[:len(self.buffer) - keep]
+                self.buffer = self.buffer[len(self.buffer) - keep:]
+            else:
+                output += self.buffer
+                self.buffer = ""
+
+            break
+
+        return output
+
+    def finish(self):
+        # Se a resposta terminou dentro de um bloco não fechado (cortada), o
+        # resto é código solto: não fala.
+        resto = "" if self.in_code else self.buffer
+        self.buffer = ""
+        return resto
 
 
 # ============================================================
@@ -9506,6 +9590,11 @@ class ToolsUnsupported(Exception):
     pass
 
 
+class ThinkUnsupported(Exception):
+    """O modelo recusou think:true; refazer sem pensar (já aprendido)."""
+    pass
+
+
 def trim_history():
     """
     Mantem o sistema mais as ultimas mensagens, sem comecar no meio de
@@ -9627,9 +9716,11 @@ def run_model_round(allow_tools, opcoes=None):
         "model": modelo_em_uso(),
         "messages": estado.history,
         "stream": True,
-        # O esforço "alto" liga o raciocínio antes da resposta; os
-        # outros dois mantêm a resposta direta de sempre.
-        "think": ESFORCO_THINK.get(esforco_atual[0], False),
+        # O esforço "alto" liga o raciocínio antes da resposta — mas SÓ para
+        # modelos que pensam. O coder não pensa: para ele, think fica desligado
+        # mesmo no alto (senão a resposta vinha quebrada).
+        "think": (ESFORCO_THINK.get(esforco_atual[0], False)
+                  and modelo_suporta_think(modelo_em_uso())),
         "keep_alive": KEEP_ALIVE,
         "options": opcoes or MODEL_OPTIONS,
     }
@@ -9647,13 +9738,20 @@ def run_model_round(allow_tools, opcoes=None):
     speech_buffer = ""
     tool_calls = []
     think_filter = ThinkFilter()
+    fala_filter = FalaSemBlocos()      # a janela mostra o código; a voz, não
 
     with session.post(
         OLLAMA_URL, json=payload, stream=True, timeout=(5, 300)
     ) as response:
 
-        if allow_tools and response.status_code == 400:
-            if "tool" in response.text.lower():
+        if response.status_code == 400:
+            corpo = response.text.lower()
+            # Rede de segurança: se um modelo que a heurística achou que pensa
+            # recusar o think, aprende e refaz sem pensar (em vez de quebrar).
+            if "think" in corpo and payload.get("think"):
+                MODELOS_SEM_THINK.add(modelo_em_uso().lower())
+                raise ThinkUnsupported()
+            if allow_tools and "tool" in corpo:
                 raise ToolsUnsupported()
 
         response.raise_for_status()
@@ -9672,8 +9770,13 @@ def run_model_round(allow_tools, opcoes=None):
                 if visible:
                     print(visible, end="", flush=True)
                     answer += visible
-                    speech_buffer += visible
-                    speech_buffer = queue_sentences(speech_buffer)
+
+                    # A FALA recebe o texto sem os blocos de código; a janela
+                    # (ui_stream) continua com o texto inteiro.
+                    falavel = fala_filter.feed(visible)
+                    if falavel:
+                        speech_buffer += falavel
+                        speech_buffer = queue_sentences(speech_buffer)
 
                     # A janela acompanha a geração, igual ao console.
                     ui_stream(answer)
@@ -9689,7 +9792,11 @@ def run_model_round(allow_tools, opcoes=None):
     if remaining:
         print(remaining, end="", flush=True)
         answer += remaining
-        speech_buffer += remaining
+        speech_buffer += fala_filter.feed(remaining)
+
+    # O que sobrou fora de um bloco (ex.: a frase depois do código) ainda é
+    # falado; código solto de uma resposta cortada, não.
+    speech_buffer += fala_filter.finish()
 
     queue_sentences(speech_buffer, force=True)
 
@@ -9833,6 +9940,12 @@ def ask_nebell(user_text, resumo=None):
             )
 
             try:
+                answer, calls = run_model_round(allow_tools, opcoes)
+            except ThinkUnsupported:
+                # O modelo não pensa: já ficou registrado em MODELOS_SEM_THINK,
+                # então refazer agora já sai com think desligado.
+                print("\n[Aviso] Este modelo não suporta 'pensar'; "
+                      "refazendo sem o raciocínio.")
                 answer, calls = run_model_round(allow_tools, opcoes)
             except ToolsUnsupported:
                 estado.tools_supported = False

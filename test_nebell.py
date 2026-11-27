@@ -362,6 +362,70 @@ class TestThinkFilter(NebellTest):
         self.assertEqual(f.finish(), "")
 
 
+class TestFalaSemBlocos(NebellTest):
+    """A voz não lê blocos de código; a janela continua com eles."""
+
+    def test_remove_o_bloco_e_fala_o_resto(self):
+        f = J.FalaSemBlocos()
+        out = f.feed("Aqui vai:\n```python\nprint('oi')\n```\npronto.")
+        out += f.finish()
+        self.assertNotIn("print", out)
+        self.assertNotIn("```", out)
+        self.assertIn("Aqui vai:", out)
+        self.assertIn("pronto.", out)
+        self.assertIn("Código na tela", out)
+
+    def test_cerca_dividida_entre_pedacos(self):
+        f = J.FalaSemBlocos()
+        saida = "".join([
+            f.feed("veja o code ``"),
+            f.feed("`js\nconst x=1;\n``"),
+            f.feed("` e acabou."),
+        ])
+        saida += f.finish()
+        self.assertNotIn("const", saida)
+        self.assertNotIn("`", saida)
+        self.assertIn("veja o code", saida)
+        self.assertIn("e acabou.", saida)
+
+    def test_texto_sem_codigo_passa_igual(self):
+        f = J.FalaSemBlocos()
+        self.assertEqual(f.feed("Bom dia, senhor"), "Bom dia, senhor")
+
+    def test_bloco_nao_fechado_nao_e_falado(self):
+        f = J.FalaSemBlocos()
+        out = f.feed("segue:\n```python\nprint('x')")
+        out += f.finish()
+        self.assertNotIn("print", out)
+        self.assertIn("segue:", out)
+
+    def test_dois_blocos(self):
+        f = J.FalaSemBlocos()
+        out = f.feed("um ```a``` dois ```b``` fim")
+        out += f.finish()
+        self.assertNotIn("```", out)
+        self.assertIn("um", out)
+        self.assertIn("dois", out)
+        self.assertIn("fim", out)
+
+
+class TestThinkSoParaQuemPensa(NebellTest):
+    """O 'pensar' do esforço alto só vai para modelos que suportam."""
+
+    def setUp(self):
+        super().setUp()
+        J.MODELOS_SEM_THINK.clear()
+
+    def test_qwen3_pensa_coder_nao(self):
+        self.assertTrue(J.modelo_suporta_think("qwen3.5:4b"))
+        self.assertFalse(J.modelo_suporta_think("qwen2.5-coder:3b"))
+        self.assertFalse(J.modelo_suporta_think("llama3.2:3b"))
+
+    def test_aprende_que_um_modelo_nao_pensa(self):
+        J.MODELOS_SEM_THINK.add("qwen3-estranho:1b")
+        self.assertFalse(J.modelo_suporta_think("qwen3-estranho:1b"))
+
+
 # ============================================================
 # PREPARO DO TEXTO FALADO
 # ============================================================
