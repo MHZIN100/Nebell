@@ -1001,6 +1001,12 @@ estado = Estado()
 stop_speaking_event = threading.Event()
 speaking_active = threading.Event()
 falando_agora = threading.Event()   # enquanto QUALQUER fala esta saindo
+
+# "Época" da fala: toda fala enfileirada carrega a época do momento. O PARAR
+# incrementa a época, e os trabalhadores de voz descartam qualquer trecho de
+# uma época antiga. Isso fecha a corrida em que um trecho já tirado da fila (ou
+# a meio de sintetizar) tocava DEPOIS do PARAR — a fala que "voltava".
+fala_epoca = [0]
 ultimas_falas = []                  # o que ele disse, para reconhecer o eco
 ultima_fala_em = [0.0]
 
@@ -1832,15 +1838,20 @@ def zerar_falas():
 def synth_worker():
     """Etapa 1: transforma texto em audio enquanto o anterior ainda toca."""
     while True:
-        text = speech_queue.get()
+        item = speech_queue.get()
         passou = False
+        valido = item is not None
 
         try:
-            if text is None:
+            if item is None:
                 audio_queue.put(None)
                 return
 
-            if stop_speaking_event.is_set():
+            epoca, text = item
+
+            # Trecho de uma fala já cancelada (PARAR mudou a época) ou mudo:
+            # descarta antes de gastar síntese com ele.
+            if epoca != fala_epoca[0] or stop_speaking_event.is_set():
                 continue
 
             cleaned = clean_for_speech(text)
@@ -1848,7 +1859,7 @@ def synth_worker():
             if not cleaned:
                 continue
 
-            audio_queue.put(synthesize_cached(cleaned))
+            audio_queue.put((epoca, synthesize_cached(cleaned)))
             passou = True
 
         except Exception as exc:
@@ -1859,7 +1870,7 @@ def synth_worker():
 
             # So conta aqui o que NAO chegou ao tocador; o que passou
             # e contado por ele, quando termina de tocar.
-            if text is not None and not passou:
+            if valido and not passou:
                 fala_terminou()
 
 
@@ -1873,10 +1884,14 @@ def player_worker():
             if item is None:
                 return
 
-            if stop_speaking_event.is_set():
+            epoca, payload = item
+
+            # Áudio de uma fala já cancelada: não toca (era o som que "voltava"
+            # depois do PARAR, por já ter saído da fila antes do corte).
+            if epoca != fala_epoca[0] or stop_speaking_event.is_set():
                 continue
 
-            data, seconds = item
+            data, seconds = payload
 
             if busy_event.is_set():
                 ui_state("speaking")
@@ -1916,7 +1931,7 @@ def speak(text):
     ultimas_falas.append(normalize(limpo))
     del ultimas_falas[:-12]
 
-    speech_queue.put(limpo)
+    speech_queue.put((fala_epoca[0], limpo))
 
 
 def drain(target_queue):
@@ -1930,6 +1945,9 @@ def drain(target_queue):
 
 def stop_speaking():
     """Corta a fala em andamento e descarta o que estava na fila."""
+    # Nova época: qualquer trecho já enfileirado (ou a meio de sintetizar) fica
+    # "velho" e é descartado pelos trabalhadores, mesmo que escape do drain.
+    fala_epoca[0] += 1
     stop_speaking_event.set()
 
     if winsound is not None:

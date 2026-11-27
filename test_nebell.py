@@ -516,12 +516,29 @@ class TestPipelineDeVoz(NebellTest):
 
     def test_stop_speaking_esvazia_as_filas(self):
         for _ in range(5):
-            J.speech_queue.put("frase longa de teste")
+            J.speech_queue.put((J.fala_epoca[0], "frase longa de teste"))
         J.stop_speaking()
         J.wait_for_speech()
         self.assertTrue(J.speech_queue.empty())
         self.assertTrue(J.audio_queue.empty())
         self.assertFalse(J.stop_speaking_event.is_set())
+
+    def test_parar_muda_a_epoca_da_fala(self):
+        # O PARAR precisa invalidar as falas já na fila (muda a época), senão
+        # um trecho que escapou do drain tocava depois — a fala que "voltava".
+        antes = J.fala_epoca[0]
+        J.stop_speaking()
+        self.assertEqual(J.fala_epoca[0], antes + 1)
+
+    def test_speak_marca_a_epoca_atual(self):
+        J.drain(J.speech_queue)
+        J.fala_epoca[0] = 7
+        with mock.patch.object(J, "fala_comecou"):
+            J.speak("alô")
+        epoca, texto = J.speech_queue.get_nowait()
+        self.assertEqual(epoca, 7)
+        self.assertEqual(texto, "alô")
+        J.speech_queue.task_done()
 
 
 # ============================================================
