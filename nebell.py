@@ -394,9 +394,11 @@ MODEL_NAME = "qwen3.5:4b"
 # (nada muda) ate voce baixar um modelo no Ollama (ex.: ollama pull
 # qwen2.5-coder:3b) e apontar aqui ou no nebell_config.json.
 MODELO_CODIGO = "qwen2.5-coder:3b"   # especialista de programação; vazio = usa o geral
-# Em 8 GB, o 3b troca rápido; o 7b cabe mas demora a aquecer. Se o 3b não
-# estiver baixado, a troca cai para qualquer coder instalado (ex.: o 7b).
-CODERS_ALTERNATIVOS = ["qwen2.5-coder:3b", "qwen2.5-coder:7b", "qwen2.5-coder:1.5b"]
+# Em 8 GB, o 3b troca rápido; o 7b cabe mas trava a máquina carregando
+# (pagina pro disco com a RAM cheia). Então, no AUTOMÁTICO, a troca só cai
+# para coders LEVES — nunca puxa o 7b sozinho. O 7b só é usado se a pessoa
+# apontar nele de propósito (MODELO_CODIGO = "qwen2.5-coder:7b").
+CODERS_ALTERNATIVOS = ["qwen2.5-coder:3b", "qwen2.5-coder:1.5b"]
 # Escolha do modelo: False = manual (voce escolhe na janela); True = a
 # NEBELL escolhe pela tarefa (codigo -> modelo de codigo).
 MODELO_AUTO = False

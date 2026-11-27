@@ -3527,15 +3527,40 @@ class TestOllamaAutomatico(NebellTest):
         pre.assert_not_called()
         self.assertTrue(any("ollama pull qwen2.5-coder:7b" in a for a in avisos))
 
-    def test_troca_usa_o_coder_que_existe_mesmo_sem_o_configurado(self):
-        # Configurado para o 3b, mas só o 7b está baixado: usa o 7b em vez de
-        # cair no geral (aproveita o que a pessoa já tem).
+    def test_automatico_nao_puxa_o_7b_sozinho(self):
+        # Configurado para o 3b, mas só o 7b (pesado) está baixado: NÃO cai no
+        # 7b sozinho (ele trava a máquina de 8 GB carregando). Fica no geral e
+        # pede para baixar o 3b.
+        estado = J.estado
+        estado.modelo_atual = None
+        estado.dominio_atual = "geral"
+        avisos = []
+
+        def instalado(nome):
+            return nome == "qwen2.5-coder:7b"
+
+        with mock.patch.object(J, "MODELO_CODIGO", "qwen2.5-coder:3b"), \
+             mock.patch.object(J, "modelo_instalado", side_effect=instalado), \
+             mock.patch.object(J, "ui_message", side_effect=lambda p, t: avisos.append(t)), \
+             mock.patch.object(J, "ui_state"), \
+             mock.patch.object(J, "precarregar_modelo") as pre, \
+             mock.patch.object(J, "descarregar_modelo"), \
+             mock.patch.object(J, "atualizar_estatisticas"):
+            J.trocar_para_dominio("codigo")
+
+        self.assertEqual(estado.dominio_atual, "geral")
+        self.assertIsNone(estado.modelo_atual)
+        pre.assert_not_called()
+        self.assertTrue(any("ollama pull qwen2.5-coder:3b" in a for a in avisos))
+
+    def test_troca_usa_um_coder_leve_instalado(self):
+        # Configurado para o 3b (ausente), mas o 1.5b está baixado: usa o leve.
         estado = J.estado
         estado.modelo_atual = None
         estado.dominio_atual = "geral"
 
         def instalado(nome):
-            return nome == "qwen2.5-coder:7b"
+            return nome == "qwen2.5-coder:1.5b"
 
         with mock.patch.object(J, "MODELO_CODIGO", "qwen2.5-coder:3b"), \
              mock.patch.object(J, "modelo_instalado", side_effect=instalado), \
@@ -3547,7 +3572,7 @@ class TestOllamaAutomatico(NebellTest):
             J.trocar_para_dominio("codigo")
 
         self.assertEqual(estado.dominio_atual, "codigo")
-        self.assertEqual(estado.modelo_atual, "qwen2.5-coder:7b")
+        self.assertEqual(estado.modelo_atual, "qwen2.5-coder:1.5b")
 
     def test_clicar_no_microfone_cala_a_fala(self):
         # Quem clica no microfone quer falar agora: se ela está falando
