@@ -460,6 +460,19 @@ MAX_REPLY_TOKENS = 320
 # 8192 ja sobra espaco de verdade e o Whisper roda na placa tambem.
 NUM_CTX = 8192
 
+# ---- janela e saída no modo PROGRAMAÇÃO --------------------
+# Programar é o caso que mais estoura os limites: o enunciado costuma ser
+# longo (o modelo precisa LER tudo) e a resposta — o código — também.
+# Com a janela/saída de conversa, um prompt grande era truncado (o modelo
+# perdia a instrução e só cumprimentava) e um programa inteiro não cabia na
+# saída. Então, no domínio "codigo", a janela e o teto de saída sobem.
+#
+# 16384 é o mesmo valor que o perfil "estudo" já usa, então a máquina dá
+# conta — e o coder (3b) é menor que o geral (4b), ocupando menos cache que
+# ele. Custa mais RAM: se faltar memória, basta baixar estes dois números.
+NUM_CTX_CODIGO = 16384
+NUM_PREDICT_CODIGO = 4096
+
 # As MESMAS opcoes do aquecimento e das perguntas. Se forem diferentes,
 # o Ollama recarrega o modelo do zero na primeira pergunta de verdade.
 MODEL_OPTIONS = {
@@ -470,6 +483,12 @@ MODEL_OPTIONS = {
     "repeat_penalty": 1.05,
     "num_predict": MAX_REPLY_TOKENS,
 }
+
+
+def num_ctx_do_dominio(dominio):
+    """A janela de contexto para um domínio. Programação ganha uma janela
+    bem maior; os demais ficam na padrão."""
+    return NUM_CTX_CODIGO if dominio == "codigo" else NUM_CTX
 
 # ---- quanto ele pode falar de uma vez ----------------------
 # MAX_REPLY_TOKENS serve para conversa: resposta curta, que comeca a
@@ -2755,15 +2774,18 @@ def escolher_dominio(texto):
     return "geral"
 
 
-def precarregar_modelo(nome):
+def precarregar_modelo(nome, num_ctx=None):
     """Pede ao Ollama para carregar o modelo agora (aquece), para o atraso
-    da troca acontecer durante a animação de 'trocando'. Nunca levanta."""
+    da troca acontecer durante a animação de 'trocando'. Nunca levanta.
+
+    Aquece JÁ com a janela que vai ser usada (num_ctx): se aquecesse com uma
+    janela e a primeira pergunta usasse outra, o Ollama recarregaria o modelo
+    do zero — justo o atraso que o aquecimento existe para evitar."""
+    corpo = {"model": nome, "prompt": "", "keep_alive": KEEP_ALIVE}
+    if num_ctx:
+        corpo["options"] = {"num_ctx": num_ctx}
     try:
-        session.post(
-            OLLAMA_GENERATE_URL,
-            json={"model": nome, "prompt": "", "keep_alive": KEEP_ALIVE},
-            timeout=60,
-        )
+        session.post(OLLAMA_GENERATE_URL, json=corpo, timeout=60)
     except Exception:
         nebell_log and nebell_log.engolido("precarregar modelo")
 
@@ -2805,7 +2827,7 @@ def trocar_para_dominio(dominio):
     except Exception:
         nebell_log and nebell_log.engolido("troca: descarregar atual")
 
-    precarregar_modelo(alvo)
+    precarregar_modelo(alvo, num_ctx=num_ctx_do_dominio(dominio))
     estado.modelo_atual = alvo
     print(f"\n[Modelo] Agora usando {alvo} ({dominio}).")
 
@@ -9555,6 +9577,15 @@ def opcoes_do_pedido(texto=""):
     em tudo o mais.
     """
     opcoes = dict(MODEL_OPTIONS)
+
+    # No modo Programação, dá janela e saída grandes SEMPRE: o modelo precisa
+    # ler o enunciado inteiro (senão trunca e se perde) e escrever o código
+    # inteiro (senão corta no meio). Vale para qualquer nível de esforço.
+    if estado.dominio_atual == "codigo":
+        opcoes["num_ctx"] = max(opcoes.get("num_ctx", 0), NUM_CTX_CODIGO)
+        opcoes["num_predict"] = max(opcoes.get("num_predict", 0),
+                                    NUM_PREDICT_CODIGO)
+        return opcoes
 
     if texto and precisa_de_espaco(texto):
         # Nunca para baixo: o perfil estudo já dá 700, e reduzir aqui

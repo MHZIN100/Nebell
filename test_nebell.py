@@ -262,6 +262,10 @@ class NebellTest(unittest.TestCase):
         garantir_trabalhadores()
         abrir_memoria_de_teste()
         J.reset_history()
+        # Cada teste começa no domínio geral (sem especialista ativo), para
+        # um teste de troca de modelo não vazar o domínio para o seguinte.
+        J.estado.dominio_atual = "geral"
+        J.estado.modelo_atual = None
         J.estado.first_chunk_pending = True
         J.estado.tools_supported = True
         J.estado.interaction_mode = "text"
@@ -6498,6 +6502,21 @@ class TestLimiteDeResposta(NebellTest):
             J.opcoes_do_pedido()["num_predict"],
             J.MODEL_OPTIONS["num_predict"],
         )
+
+    def test_modo_programacao_ganha_janela_e_saida_grandes(self):
+        # No domínio de código, a janela de contexto e o teto de saída sobem
+        # SEMPRE (para o prompt grande caber e o programa inteiro sair).
+        J.estado.dominio_atual = "codigo"
+        try:
+            opcoes = J.opcoes_do_pedido("qualquer coisa")
+            self.assertGreaterEqual(opcoes["num_ctx"], J.NUM_CTX_CODIGO)
+            self.assertGreaterEqual(opcoes["num_predict"], J.NUM_PREDICT_CODIGO)
+        finally:
+            J.estado.dominio_atual = "geral"
+
+    def test_janela_do_dominio(self):
+        self.assertEqual(J.num_ctx_do_dominio("codigo"), J.NUM_CTX_CODIGO)
+        self.assertEqual(J.num_ctx_do_dominio("geral"), J.NUM_CTX)
 
     def test_as_regras_de_codigo_entram_so_quando_e_codigo(self):
         self.assertIn("crase tripla", J.build_system_prompt(True))
