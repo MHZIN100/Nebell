@@ -393,7 +393,10 @@ MODEL_NAME = "qwen3.5:4b"
 # 'geral' e sempre o MODEL_NAME acima. Os outros ficam vazios por padrao
 # (nada muda) ate voce baixar um modelo no Ollama (ex.: ollama pull
 # qwen2.5-coder:3b) e apontar aqui ou no nebell_config.json.
-MODELO_CODIGO = "qwen2.5-coder:7b"   # especialista de programação; vazio = usa o geral
+MODELO_CODIGO = "qwen2.5-coder:3b"   # especialista de programação; vazio = usa o geral
+# Em 8 GB, o 3b troca rápido; o 7b cabe mas demora a aquecer. Se o 3b não
+# estiver baixado, a troca cai para qualquer coder instalado (ex.: o 7b).
+CODERS_ALTERNATIVOS = ["qwen2.5-coder:3b", "qwen2.5-coder:7b", "qwen2.5-coder:1.5b"]
 # Escolha do modelo: False = manual (voce escolhe na janela); True = a
 # NEBELL escolhe pela tarefa (codigo -> modelo de codigo).
 MODELO_AUTO = False
@@ -2716,6 +2719,21 @@ def modelo_do_dominio(dominio):
     return modelo or MODEL_NAME
 
 
+def resolver_especialista(dominio, alvo):
+    """Devolve o modelo que vai mesmo ser usado. Se o configurado não está
+    baixado, tenta um parente instalado (ex.: a pessoa configurou o 3b mas só
+    tem o 7b). Devolve None quando não há nenhum — aí a troca fica no geral."""
+    if alvo == MODEL_NAME or modelo_instalado(alvo):
+        return alvo
+
+    if dominio == "codigo":
+        for c in CODERS_ALTERNATIVOS:
+            if c != alvo and modelo_instalado(c):
+                return c
+
+    return None
+
+
 # Heurística leve (sem gastar RAM com um classificador): a mensagem
 # parece um pedido de programação?
 ROTA_CODIGO_RE = re.compile(
@@ -2757,9 +2775,11 @@ def trocar_para_dominio(dominio):
     alvo = modelo_do_dominio(dominio)
     nome = NOME_DO_DOMINIO.get(dominio, "conversa")
 
-    # Especialista pedido, mas ainda não baixado: avisa como puxar e segue no
-    # geral (nada quebra — melhor do que erro em cada resposta).
-    if alvo != MODEL_NAME and not modelo_instalado(alvo):
+    # Especialista pedido: usa o configurado, ou um parente instalado. Se não
+    # houver nenhum baixado, avisa como puxar e segue no geral (nada quebra —
+    # melhor do que erro em cada resposta).
+    resolvido = resolver_especialista(dominio, alvo)
+    if resolvido is None:
         ui_message(
             "nebell",
             f"O modelo de {nome} ({alvo}) ainda não está baixado, senhor. "
@@ -2767,6 +2787,8 @@ def trocar_para_dominio(dominio):
         )
         dominio = "geral"
         alvo = MODEL_NAME
+    else:
+        alvo = resolvido
 
     estado.dominio_atual = dominio
 
@@ -10306,16 +10328,29 @@ def hud_escutar():
         except Exception:
             nebell_log and nebell_log.engolido("microfone: calar fala no clique")
 
-    if not microphone_available():
-        if estado.mic_manager is not None:
+    # Microfone instável (ex.: o do celular por Bluetooth fica indo e voltando):
+    # em vez de largar o clique no primeiro "não pronto", tenta recuperar
+    # algumas vezes num instante. Assim um clique não é engolido à toa.
+    if not microphone_available() and estado.mic_manager is not None:
+        for _ in range(3):
             try:
                 if estado.mic_manager.recover():
                     on_microphone_change(estado.mic_manager)
             except Exception:
                 nebell_log and nebell_log.engolido("microfone: recuperacao no clique")
 
+            if microphone_available():
+                break
+
+            time.sleep(0.15)
+
     if not microphone_available():
-        ui_message("nebell", "Não encontrei um microfone disponível, senhor.")
+        ui_message(
+            "nebell",
+            "Não encontrei um microfone disponível, senhor. Se estiver usando o "
+            "microfone do celular por Bluetooth, ele costuma falhar — escolha um "
+            "microfone fixo em 'Microfone de entrada'.",
+        )
         return
 
     parar_escuta_evt.clear()
