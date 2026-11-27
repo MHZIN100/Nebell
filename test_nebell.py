@@ -2292,6 +2292,28 @@ class TestInterrupcao(NebellTest):
         J.busy_event.clear()
         J.cancel_event.clear()
 
+    def test_parar_corta_a_fala_mesmo_sem_estar_gerando(self):
+        # Ela terminou de gerar, mas ainda está FALANDO (ou deu um aviso
+        # sozinha). O PARAR tem de cortar a fala, não ficar inerte.
+        J.busy_event.clear()
+        J.cancel_event.clear()
+        J.falando_agora.set()
+        try:
+            with mock.patch.object(J, "stop_speaking") as parar:
+                self.assertTrue(J.cancel_current("teste"))
+                parar.assert_called_once()
+            # Sem geração em curso, não deixa o cancel preso (abafaria falas).
+            self.assertFalse(J.cancel_event.is_set())
+        finally:
+            J.falando_agora.clear()
+            J.cancel_event.clear()
+
+    def test_parar_nao_faz_nada_parada_e_calada(self):
+        J.busy_event.clear()
+        J.falando_agora.clear()
+        J.cancel_event.clear()
+        self.assertFalse(J.cancel_current())
+
     def test_nao_cancela_duas_vezes(self):
         J.busy_event.set()
         J.cancel_current()

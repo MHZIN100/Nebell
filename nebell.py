@@ -2117,7 +2117,17 @@ def cancel_current(motivo="tecla"):
     Corta tudo na hora: a fala que esta tocando, a que esta na fila e a
     geracao do texto que ainda esta vindo do modelo.
     """
-    if not busy_event.is_set() or cancel_event.is_set():
+    if cancel_event.is_set():
+        return False
+
+    gerando = busy_event.is_set()
+    falando = falando_agora.is_set()
+
+    # Nada para cortar: nem gerando texto, nem falando. Antes isso exigia
+    # `busy_event`, então, quando ela só estava FALANDO (geração já terminada,
+    # ou um aviso que ela deu sozinha), o PARAR não fazia nada. Agora corta a
+    # fala também.
+    if not gerando and not falando:
         return False
 
     cancel_event.set()
@@ -2125,6 +2135,12 @@ def cancel_current(motivo="tecla"):
     print(f"\n[interrompido pelo {motivo}]")
     ui_state("idle")
     ui_message("nebell", f"[interrompido pelo {motivo}]")
+
+    # Se não havia geração em curso, não existe laço para observar o
+    # cancel_event; limpa já, senão ficaria preso e abafaria falas futuras.
+    if not gerando:
+        cancel_event.clear()
+
     return True
 
 
@@ -4150,7 +4166,10 @@ criar_pasta; escrever_arquivo cria arquivo de texto, não pasta.
     # escrever_arquivo, errava um escape e a chamada morria sem resposta.
     if para_codigo:
         extra += """
-QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, C#, C++, e outros):
+QUANDO O PEDIDO FOR DE CÓDIGO (Java, Python, JavaScript, C#, C++, e outros):
+REGRA MAIS IMPORTANTE: TODO código vai SEMPRE dentro de um bloco de crase
+tripla com a linguagem. NUNCA escreva código solto no meio da conversa — sem
+as crases ele não vira o bloco de copiar/baixar e polui tudo.
 1. NÃO use a ferramenta escrever_arquivo para código longo. Responda
    com o código em bloco de crase tripla dizendo a linguagem, assim:
    ```java
@@ -9922,9 +9941,13 @@ def ask_nebell(user_text, resumo=None):
         target=vigia_do_trabalho, args=(time.monotonic(),), daemon=True
     ).start()
 
-    # As regras de como responder código entram no prompt só agora, e
-    # só quando é disso que se trata.
-    refresh_system_prompt(para_codigo=pediu_codigo(user_text))
+    # As regras de como responder código (entre crases, para virar o balão de
+    # copiar/baixar) entram no prompt agora. Entram quando a mensagem parece
+    # código OU quando o usuário já está no modo Programação — senão pedidos
+    # como "faz um crud em js" (que a heurística de palavra não pega) saíam sem
+    # as crases, e o código vinha solto na conversa, sem balão.
+    para_codigo = pediu_codigo(user_text) or estado.dominio_atual == "codigo"
+    refresh_system_prompt(para_codigo=para_codigo)
 
     if METRICS and opcoes.get("num_predict") != MODEL_OPTIONS.get("num_predict"):
         print(f"[resposta longa: até {opcoes['num_predict']} tokens]")
